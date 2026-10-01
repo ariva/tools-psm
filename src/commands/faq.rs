@@ -1,0 +1,209 @@
+//! `psm faq`: questions in numbered sections, and the command that answers
+//! each. docs/FAQ.md is the same list; keep the two in step.
+
+use serde_json::{Value, json};
+
+use crate::output::{Cell, Table, out, print_json};
+
+/// `X` stands for any part of a process name.
+const FAQ: &[(&str, &[(&str, &str)])] = &[
+    (
+        "Generic",
+        &[
+            ("What is using the machine right now?", "psm info"),
+            (
+                "Which application uses the most memory, helpers included?",
+                "psm list --group app",
+            ),
+            ("What changed since I started?", "psm diff"),
+            ("What changed since my last snapshot?", "psm diff prev"),
+            ("Who moved memory the most?", "psm diff --memory"),
+            (
+                "Memory went down but no process grew. Where did it go?",
+                "psm report meminfo",
+            ),
+            (
+                "What is this process, and where does it come from?",
+                "psm list --name X --group exe   (then parent, cmdline)",
+            ),
+            (
+                "Who started this process?",
+                "psm list --name X --group parent",
+            ),
+            (
+                "Which part of an application grew?",
+                "psm diff --name X --group parent --memory",
+            ),
+            (
+                "How did one application change?",
+                "psm diff --name X --memory",
+            ),
+            ("Is it still growing?", "psm report timeline --name X"),
+            (
+                "Which of its processes is busy right now?",
+                "psm list --name X --sort cpu --top 3",
+            ),
+            (
+                "Did the new version use more memory?",
+                "psm compare old new --name X",
+            ),
+            (
+                "How do I keep this state for later?",
+                "psm snap after-update",
+            ),
+            ("How do I start a new experiment?", "psm new chrome-update"),
+            (
+                "How do I go back to an earlier experiment?",
+                "psm sessions, then psm switch <name>",
+            ),
+        ],
+    ),
+    (
+        "Finding things now",
+        &[
+            (
+                "Which processes are swapped out?",
+                "psm list --sort swap --top 10",
+            ),
+            (
+                "Which processes have done the most disk I/O?",
+                "psm list --sort io --top 10",
+            ),
+            (
+                "How many processes does each program run?",
+                "psm list --group name --sort count",
+            ),
+            (
+                "How much memory does each user take?",
+                "psm list --group user",
+            ),
+            (
+                "How much memory does each service or container take?",
+                "psm list --group cgroup",
+            ),
+            (
+                "Which processes run this exact binary?",
+                "psm list --exe /opt/google/chrome/chrome",
+            ),
+        ],
+    ),
+    (
+        "Comparing",
+        &[
+            ("Which processes appeared?", "psm diff --new"),
+            ("Which processes disappeared?", "psm diff --gone"),
+            ("Which processes restarted?", "psm diff --restarted"),
+            (
+                "Which programs grew, and by what percentage?",
+                "psm report growth",
+            ),
+            (
+                "Is it a real leak or just cache?",
+                "psm diff --memory --metric anon",
+            ),
+            (
+                "Which program burned the most CPU since my last snapshot?",
+                "psm report cpu prev",
+            ),
+            ("How do I compare two specific snapshots?", "psm diff 1 2"),
+            (
+                "What was in a snapshot I took earlier?",
+                "psm snapshots, then psm show <id>",
+            ),
+        ],
+    ),
+    (
+        "Options and data",
+        &[
+            (
+                "How do I get exact numbers for a script?",
+                "add --json to any command",
+            ),
+            (
+                "How do I see PSS instead of RSS?",
+                "psm list --deep, psm snap --deep",
+            ),
+            (
+                "Why is a value n/a?",
+                "other users' processes: run with sudo for full data",
+            ),
+            (
+                "How do I keep passwords out of the database?",
+                "psm snap --no-cmdline",
+            ),
+            ("How do I include kernel threads?", "add --kernel"),
+            (
+                "How do I leave noise out?",
+                "--exclude-regex '^chrome_crashpad'",
+            ),
+        ],
+    ),
+    (
+        "Housekeeping",
+        &[
+            (
+                "How do I move a session to another machine?",
+                "psm session export > s.json, then psm session import s.json",
+            ),
+            (
+                "How do I move everything to another machine?",
+                "psm session export --all > all.json, then psm session import all.json",
+            ),
+            (
+                "How do I change the defaults?",
+                "psm config, then edit the file",
+            ),
+            (
+                "How do I delete old sessions?",
+                "psm purge --older-than 180d",
+            ),
+            ("How do I back up everything?", "psm backup ~/psm-backup.db"),
+            ("How do I start over completely?", "psm reset"),
+        ],
+    ),
+];
+
+/// Every word must appear in the number, question or command, ignoring
+/// case. Numbers stay as in the full list, so `1.4` always means the same row.
+pub fn faq(words: &[String], json: bool) {
+    let words: Vec<String> = words.iter().map(|w| w.to_lowercase()).collect();
+    let mut parts = Vec::new();
+    let mut rows = Vec::new();
+    let mut uses_placeholder = false;
+    for (section_no, (section, questions)) in FAQ.iter().enumerate() {
+        let mut t = Table::new(&[
+            ("#", "number"),
+            ("QUESTION", "question"),
+            ("COMMAND", "command"),
+        ]);
+        for (i, (q, c)) in questions.iter().enumerate() {
+            let number = format!("{}.{}", section_no + 1, i + 1);
+            let text = format!("{number} {q} {c}").to_lowercase();
+            if words.iter().all(|w| text.contains(w.as_str())) {
+                uses_placeholder |= c.split_whitespace().any(|w| w == "X");
+                t.rows
+                    .push(vec![Cell::text(&number), Cell::text(*q), Cell::text(*c)]);
+                rows.push(
+                    json!({ "number": number, "section": section, "question": q, "command": c }),
+                );
+            }
+        }
+        if !t.rows.is_empty() {
+            parts.push(format!("{}. {section}\n{}", section_no + 1, t.render()));
+        }
+    }
+    if json {
+        print_json(&Value::Array(rows));
+    } else if parts.is_empty() {
+        out(format!(
+            "No question matches {:?}. `psm faq` lists them all.",
+            words.join(" ")
+        ));
+    } else {
+        // The placeholder note only when a shown command actually uses it.
+        if uses_placeholder {
+            parts.push("X is any part of a process name, e.g. chrome. `psm <command> --help` explains the options.".into());
+        }
+        out(parts.join("\n\n"));
+    }
+}

@@ -1,0 +1,25 @@
+[package]
+name = "tool-psm"
+version = "2.1.5"
+edition = "2024"
+description = "psm (process snapshot manager): named snapshots of the Linux process table and before/after comparison of memory, CPU and process changes"
+license = "MIT"
+repository = "https://github.com/ariva/tools-procs"
+readme = "README.md"
+keywords = ["process", "memory", "snapshot", "diff", "linux"]
+categories = ["command-line-utilities"]
+
+[[bin]]
+name = "psm"
+path = "src/main.rs"
+
+[dependencies]
+anyhow = "1"
+clap = { version = "4", features = ["derive", "env"] }
+clap_complete = "4"
+procfs = "0.18"
+regex = "1"
+rusqlite = { version = "0.37", features = ["bundled"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+toml = "0.9"
