@@ -9,9 +9,8 @@ use crate::config;
 use crate::model::Snapshot;
 use crate::output::out;
 
-/// `psm new` and `psm session new`: a session with its baseline.
+/// `psm new`: a session with its baseline.
 pub fn new_session(ctx: &Ctx, name: Option<String>, capture: &CaptureArgs) -> Result<()> {
-    ctx.writes_active_session("new")?;
     let db = ctx.db()?;
     let previous = db.active_session()?;
     let snapshot = ctx.capture(capture)?;
@@ -40,10 +39,9 @@ pub fn new_session(ctx: &Ctx, name: Option<String>, capture: &CaptureArgs) -> Re
 }
 
 pub fn snap(ctx: &Ctx, label: Option<String>, capture: &CaptureArgs) -> Result<()> {
-    ctx.writes_active_session("snap")?;
     if let Some(l) = label
         .as_deref()
-        .filter(|l| ["baseline", "latest", "prev", "now"].contains(l))
+        .filter(|l| crate::store::snapshots::RESERVED_LABELS.contains(l))
     {
         bail!("{l:?} is a reserved snapshot reference and cannot be used as a label");
     }

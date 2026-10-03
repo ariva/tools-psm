@@ -1,6 +1,6 @@
 # tool-psm
 
-`psm` (process snapshot manager) takes named snapshots of the Linux
+Tool `psm` (process snapshot manager) takes named snapshots of the Linux
 process table and shows what changed between them: which processes are
 new, gone or restarted, and which ones moved memory the most. It is
 built for before/after testing (software updates, long-running
@@ -17,7 +17,7 @@ psm diff prev --memory      # who moved memory since the last snapshot
 ## Install
 
 ```bash
-just install                # cargo install --path .  ->  ~/.cargo/bin/psm
+just install                # cargo install --path . --force --locked  ->  ~/.cargo/bin/psm
 ```
 
 Then, once:
@@ -37,27 +37,30 @@ Linux only. The Cargo package is `tool-psm`; the binary is `psm`.
 
 | Command | What it does |
 |---|---|
-| `psm list` | Processes now, with CPU and memory; `--group`, `--sort`, `--top` |
+| `psm procs` | Processes now, with CPU and memory; `--group`, `--sort`, `--top` |
 | `psm info [N]` | System memory plus the top N by CPU, memory and threads |
-| `psm new [name]` (or `psm session new`) | New session and its baseline; the previous one becomes inactive |
+| `psm new [name]` | New session and its baseline; the previous one becomes inactive |
 | `psm snap [label]` | Another snapshot in the active session |
 | `psm` / `psm status` | Active session summary |
 | `psm diff [a] [b]` | Changes between two snapshots; default baseline -> now |
 | `psm report <kind>` | `memory`, `growth`, `processes`, `new`, `gone`, `cpu`, `meminfo`, `timeline` |
-| `psm show [ref]` | One stored snapshot, same view as `list` |
-| `psm snapshots` / `psm sessions` | What is stored |
-| `psm compare <a> <b>` | Two sessions, by program |
-| `psm session new` / `export` / `import <file>` | Start a session; dump one as JSON or CSV; load a JSON dump back |
-| `psm session deactivate` / `delete <name\|id>` | Make the active session inactive; delete one session |
-| `psm switch <name\|id>` | Make another session the active one |
-| `psm purge`, `backup` | Housekeeping |
-| `psm reset` | Delete **all** sessions and snapshots; asks first |
+| `psm procs show [ref]` | Processes of one stored snapshot (`list` is the live ones); same options |
+| `psm list` (= `psm snapshots`) / `psm sessions` | What is stored |
+| `psm sessions compare <a> <b>` | Two sessions, by program |
+| `psm sessions activate <name\|id>` / `psm sessions deactivate` | Make a session active; leave none active |
+| `psm sessions export` / `import <file>` / `delete <name\|id>` | Dump one as JSON or CSV; load a JSON dump back; delete one |
+| `psm sessions purge --older-than <age>` | Delete inactive sessions older than that |
+| `psm export [ref]` / `import <file>` | Dump one snapshot (`--all`: the whole session), add from a dump |
+| `psm snapshots delete [ref]` / `reset` | Delete one snapshot (default the latest); start the session over with a new baseline, asks first |
+| `psm backup <path>` | Copy the database |
+| `psm sessions reset` | Delete **all** sessions and snapshots; asks first |
 | `psm faq [words]` | Common questions and the command that answers each; words filter the list |
-| `psm init` | First-time setup: config file, database, shell completions |
-| `psm config` | Which config file is used; `--init` creates it |
+| `psm init` | First-time setup: config file, database, shell completions; `init force` starts from scratch |
+| `psm config` / `psm --config` / `psm --db` | Which config file and database are used; `config --init` creates the file |
 | `psm completions <shell>` | Shell completion script, for other shells or machines |
 
 `psm faq` prints the questions-to-commands table; `psm <command> --help` lists every option.
+Every command also works as a flag: `psm -s` and `psm --snap` are `psm snap` (`psm <command> -h` shows its letter).
 
 ## Documentation
 

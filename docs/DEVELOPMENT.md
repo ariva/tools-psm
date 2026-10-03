@@ -16,7 +16,7 @@ just test             # tests only
 just fmt              # format
 just run list --top 10        # run from source
 just smoke            # new -> snap -> diff on this machine, throwaway database
-just install          # cargo install --path .  ->  ~/.cargo/bin/psm
+just install          # cargo install --path . --force --locked  ->  ~/.cargo/bin/psm
 just fixtures         # regenerate tests/fixtures/proc
 
 just release-static   # static x86_64 binary (musl); needs: rustup target add x86_64-unknown-linux-musl, apt install musl-tools
@@ -119,11 +119,6 @@ then reuses. Fix:
 ```bash
 cargo clean -p anyhow -p proc-macro2
 ```
-
-**`binary psm already exists in destination as part of ...`** from
-`just install`. The binary was installed while the package had another
-name. Either `cargo uninstall <old-package-name>` or
-`just install --force`.
 
 **rust-analyzer shows "proc macro not expanded"**. Editor-side version
 mismatch; the build is not affected.

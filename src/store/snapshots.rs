@@ -3,23 +3,95 @@
 use anyhow::{Context, Result, bail};
 use rusqlite::{Connection, OptionalExtension, params};
 
+use super::sessions::valid_timestamp;
 use super::{Db, NOW, Session, SnapMeta};
 use crate::model::{CgroupMem, Proc, Snapshot};
 
+/// Labels with a fixed meaning; a stored snapshot never carries one, except
+/// the baseline, which is the first snapshot of its session.
+pub const RESERVED_LABELS: [&str; 4] = ["baseline", "latest", "prev", "now"];
+
 impl Db {
     /// A snapshot is written atomically: a partial one never becomes visible.
+    /// Returns its number within the session.
     pub fn snap(&self, session_id: i64, label: Option<&str>, snapshot: &Snapshot) -> Result<i64> {
         let tx = self.conn.unchecked_transaction()?;
         let id = insert_snapshot(&tx, session_id, label, None, snapshot)?;
         tx.commit()?;
-        Ok(id)
+        self.seq(id)
+    }
+
+    /// The number of a snapshot within its session: 0 for the baseline, then
+    /// 1, 2, ... in order of creation. Stored at insert time and never reused,
+    /// so deleting a snapshot leaves the others' numbers alone.
+    pub fn seq(&self, snapshot_id: i64) -> Result<i64> {
+        Ok(self.conn.query_row(
+            "SELECT seq FROM snapshots WHERE id = ?1",
+            [snapshot_id],
+            |r| r.get(0),
+        )?)
+    }
+
+    /// Appends stored snapshots (from `psm export`) to a session,
+    /// keeping their timestamps. Reserved labels are dropped: the session
+    /// already has its baseline. Returns the numbers they got.
+    pub fn add_snapshots(&self, session_id: i64, snapshots: &[Snapshot]) -> Result<Vec<i64>> {
+        let tx = self.conn.unchecked_transaction()?;
+        let mut numbers = Vec::new();
+        for s in snapshots {
+            let label = s.label.as_deref().filter(|l| !RESERVED_LABELS.contains(l));
+            let id = insert_snapshot(
+                &tx,
+                session_id,
+                label,
+                valid_timestamp(&tx, &s.created_at)?.as_deref(),
+                s,
+            )?;
+            numbers.push(
+                tx.query_row("SELECT seq FROM snapshots WHERE id = ?1", [id], |r| {
+                    r.get(0)
+                })?,
+            );
+        }
+        tx.commit()?;
+        Ok(numbers)
+    }
+
+    /// Deletes one snapshot and its rows. The baseline stays: without it the
+    /// session has nothing to compare against; `delete_session` removes both.
+    /// Returns the number and label of what was deleted.
+    pub fn delete_snapshot(&self, session: &Session, snapshot_id: i64) -> Result<SnapMeta> {
+        let meta = self
+            .snapshots(session.id, true)?
+            .into_iter()
+            .find(|m| m.id == snapshot_id)
+            .with_context(|| format!("no such snapshot in session {:?}", session.name))?;
+        if meta.seq == 0 {
+            bail!(
+                "#0 is the baseline of session {:?} and cannot be deleted on its own; \
+                 `psm sessions delete {}` removes the whole session",
+                session.name,
+                session.name
+            );
+        }
+        let tx = self.conn.unchecked_transaction()?;
+        for table in ["processes", "snapshot_meminfo", "snapshot_cgroups"] {
+            tx.execute(
+                &format!("DELETE FROM {table} WHERE snapshot_id = ?1"),
+                [snapshot_id],
+            )?;
+        }
+        tx.execute("DELETE FROM snapshots WHERE id = ?1", [snapshot_id])?;
+        tx.commit()?;
+        Ok(meta)
     }
 
     /// `kernel` decides whether kernel threads count as processes.
     pub fn snapshots(&self, session_id: i64, kernel: bool) -> Result<Vec<SnapMeta>> {
         let mut stmt = self.conn.prepare(
             "SELECT id, label, datetime(created_at,'localtime'), deep,
-                    (SELECT count(*) FROM processes WHERE snapshot_id = snapshots.id AND kthread <= ?2)
+                    (SELECT count(*) FROM processes WHERE snapshot_id = snapshots.id AND kthread <= ?2),
+                    seq
              FROM snapshots WHERE session_id = ?1 ORDER BY id",
         )?;
         let rows = stmt
@@ -30,13 +102,15 @@ impl Db {
                     created: r.get(2)?,
                     deep: r.get(3)?,
                     processes: r.get(4)?,
+                    seq: r.get(5)?,
                 })
             })?
             .collect::<rusqlite::Result<_>>()?;
         Ok(rows)
     }
 
-    /// `baseline`, `latest`, `prev`, a snapshot id, or a label (newest match).
+    /// `baseline`, `latest`, `prev`, a snapshot number (0 is the baseline), or
+    /// a label (newest match). Returns the row id, for `load`.
     pub fn resolve(&self, session: &Session, reference: &str) -> Result<i64> {
         let pick = |sql: &str| -> Result<Option<i64>> {
             Ok(self
@@ -64,14 +138,18 @@ impl Db {
                 prev
             }
             other => {
-                let by_id = match other.parse::<i64>() {
-                    Ok(id) => self
+                let by_number = match other.parse::<i64>() {
+                    Ok(n) if n >= 0 => self
                         .conn
-                        .query_row("SELECT id FROM snapshots WHERE id = ?1", [id], |r| r.get(0))
+                        .query_row(
+                            "SELECT id FROM snapshots WHERE session_id = ?1 AND seq = ?2",
+                            params![session.id, n],
+                            |r| r.get(0),
+                        )
                         .optional()?,
-                    Err(_) => None,
+                    _ => None,
                 };
-                match by_id {
+                match by_number {
                     Some(id) => Some(id),
                     None => self
                         .conn
@@ -103,10 +181,16 @@ impl Db {
             )
             .optional()?
             .with_context(|| {
-                format!("there is no snapshot before #{snapshot_id} in session {:?}", session.name)
+                format!(
+                    "there is no snapshot before #{} in session {:?}",
+                    self.seq(snapshot_id).unwrap_or(snapshot_id),
+                    session.name
+                )
             })
     }
 
+    /// `snapshot_id` is the row id (from `resolve` or `snapshots`); the
+    /// returned `Snapshot::id` is the number within the session.
     pub fn load(&self, snapshot_id: i64) -> Result<Snapshot> {
         let mut snap = self.conn.query_row(
             "SELECT id, label, created_at, hostname, boot_id, kernel_version, collector_uid, deep,
@@ -137,6 +221,7 @@ impl Db {
                 })
             },
         )?;
+        snap.id = self.seq(snapshot_id)?;
 
         let mut stmt = self
             .conn
@@ -211,10 +296,11 @@ pub(super) fn insert_snapshot(
 ) -> Result<i64> {
     conn.execute(
         &format!(
-            "INSERT INTO snapshots (session_id, created_at, label, hostname, boot_id, kernel_version,
+            "INSERT INTO snapshots (session_id, seq, created_at, label, hostname, boot_id, kernel_version,
                 collector_uid, deep, clk_tck, uptime_seconds, load_1, load_5, load_15,
                 memory_total, memory_available, swap_total, swap_used)
-             VALUES (?1, COALESCE(?17, {NOW}), ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16)"
+             VALUES (?1, (SELECT COALESCE(MAX(seq) + 1, 0) FROM snapshots WHERE session_id = ?1),
+                COALESCE(?17, {NOW}), ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16)"
         ),
         params![
             session_id,

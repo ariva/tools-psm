@@ -12,7 +12,7 @@ use serde::Serialize;
 pub mod sessions;
 pub mod snapshots;
 
-const SCHEMA_VERSION: i64 = 1;
+const SCHEMA_VERSION: i64 = 2;
 pub(crate) const NOW: &str = "strftime('%Y-%m-%dT%H:%M:%SZ','now')";
 
 pub struct Db {
@@ -32,7 +32,11 @@ pub struct Session {
 
 #[derive(Debug, Clone, Serialize)]
 pub struct SnapMeta {
+    /// Row id, for loading. Not shown.
     pub id: i64,
+    /// Number within the session, what the user sees: 0 is the baseline.
+    /// Stored, so deleting a snapshot never renumbers the others.
+    pub seq: i64,
     pub label: Option<String>,
     pub created: String,
     pub processes: i64,
@@ -82,11 +86,18 @@ impl Db {
         } else if version != SCHEMA_VERSION {
             bail!(
                 "{} was created by a different version (schema {version}, expected {SCHEMA_VERSION}).\n\
-                 Move it aside, pass --db, or run `psm reset` to delete it and start over.",
+                 Move it aside, pass --db, or run `psm sessions reset` to delete it and start over.",
                 path.display()
             );
         }
         Ok(Db { conn })
+    }
+
+    /// The current local time, formatted like the stored timestamps.
+    pub fn now_local(&self) -> Result<String> {
+        Ok(self
+            .conn
+            .query_row("SELECT datetime('now','localtime')", [], |r| r.get(0))?)
     }
 
     /// Consistent copy of the whole database.

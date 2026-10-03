@@ -1,4 +1,4 @@
-//! Sessions: rules, switching, export and import.
+//! Sessions: rules, activating, export and import; the snapshot group.
 
 mod common;
 
@@ -18,7 +18,7 @@ fn session_rules() {
     e.ok("before", &["new", "a"]);
     assert!(
         e.fails("before", &["diff", "prev", "latest"])
-            .contains("no snapshot before #1")
+            .contains("no snapshot before #0")
     );
     assert_eq!(
         e.json("before", &["diff", "--json"])["net_change"],
@@ -26,13 +26,9 @@ fn session_rules() {
         "baseline -> now, unchanged"
     );
     assert!(e.fails("before", &["snap", "latest"]).contains("reserved"));
-    assert!(
-        e.fails("before", &["--session", "a", "snap"])
-            .contains("active session")
-    );
 
     // init makes the previous session inactive; nothing is deleted.
-    e.ok("after", &["session", "new", "b"]);
+    e.ok("after", &["new", "b"]);
     assert!(e.fails("after", &["new", "a"]).contains("already exists"));
     let sessions = e.json("after", &["sessions", "--json"]);
     assert_eq!(
@@ -40,7 +36,7 @@ fn session_rules() {
         ["inactive", "active"]
     );
     assert_eq!(
-        e.json("after", &["--session", "a", "snapshots", "--json"])[0]["label"],
+        e.json("after", &["sessions", "export", "a"])["snapshots"][0]["label"],
         "baseline"
     );
 
@@ -49,18 +45,14 @@ fn session_rules() {
     assert_eq!(status["processes"]["current"], 5);
 
     // Sessions are compared by program, never by pid.
-    let cmp = e.json("after", &["compare", "a", "b", "--json"]);
+    let cmp = e.json("after", &["sessions", "compare", "a", "b", "--json"]);
     assert_eq!(cmp["totals"][0]["delta"], 0);
     assert_eq!(cmp["programs"][0]["name"], "rust-analyzer");
     assert_eq!(cmp["programs"][0]["delta"], -468 * MIB);
 
-    // An inactive session is compared within itself, not against now.
-    let inactive = e.json("after", &["--session", "a", "diff", "--json"]);
-    assert_eq!(inactive["to"]["label"], "baseline");
-
-    // Switching: `a` becomes the active session again, `b` inactive. Nothing is lost.
+    // Activating: `a` becomes the active session again, `b` inactive. Nothing is lost.
     assert!(
-        e.ok("after", &["switch", "a"])
+        e.ok("after", &["sessions", "activate", "a"])
             .contains("\"a\" is now active")
     );
     let sessions = e.json("after", &["sessions", "--json"]);
@@ -73,16 +65,24 @@ fn session_rules() {
         "a"
     );
     e.ok("after", &["snap", "later"]);
+    let list = e.json("after", &["snapshots", "--json"]);
     assert_eq!(
-        e.json("after", &["snapshots", "--json"])
-            .as_array()
-            .unwrap()
-            .len(),
-        2,
-        "snap went to a"
+        list.as_array().unwrap().len(),
+        3,
+        "snap went to a; plus the `now` row"
     );
+    // The live state closes the list: no id, label `now`, a process count.
+    assert_eq!(list[2]["id"], Value::Null);
+    assert_eq!(list[2]["label"], "now");
+    assert_eq!(list[2]["processes"], 5);
+    let text = e.ok("after", &["snapshots"]);
+    assert!(
+        text.lines().last().unwrap().trim_start().starts_with("> "),
+        "{text}"
+    );
+    assert_eq!(e.ok("after", &["-l"]).lines().count(), text.lines().count());
     assert_eq!(
-        e.json("after", &["--session", "b", "snapshots", "--json"])
+        e.json("after", &["sessions", "export", "b"])["snapshots"]
             .as_array()
             .unwrap()
             .len(),
@@ -93,18 +93,30 @@ fn session_rules() {
         "now",
         "active again: compared with now"
     );
-    assert!(e.ok("after", &["switch", "a"]).contains("already active"));
-    assert!(e.fails("after", &["switch", "nope"]).contains("no session"));
-    // Deactivating leaves no active session; switch brings one back by id.
-    e.ok("after", &["session", "deactivate"]);
+    assert!(
+        e.ok("after", &["sessions", "activate", "a"])
+            .contains("already active")
+    );
+    assert!(
+        e.fails("after", &["sessions", "activate", "nope"])
+            .contains("no session")
+    );
+    // Deactivating leaves no active session; activate brings one back by id.
+    e.ok("after", &["sessions", "deactivate"]);
     assert!(e.fails("after", &["snap"]).contains("no active session"));
-    e.ok("after", &["switch", "2"]);
+    e.ok("after", &["sessions", "activate", "2"]);
     assert_eq!(
         e.json("after", &["status", "--json"])["session"]["name"],
         "b"
     );
+    // Snapshots are numbered per session, from 0 = baseline.
+    assert_eq!(e.json("after", &["snapshots", "--json"])[0]["id"], 0);
+    assert_eq!(
+        e.json("after", &["sessions", "export", "a"])["snapshots"][0]["id"],
+        0
+    );
 
-    e.ok("after", &["session", "delete", "a"]);
+    e.ok("after", &["sessions", "delete", "a"]);
     assert_eq!(
         e.json("after", &["sessions", "--json"])
             .as_array()
@@ -113,7 +125,7 @@ fn session_rules() {
         1
     );
     assert!(
-        e.fails("after", &["--session", "a", "snapshots"])
+        e.fails("after", &["sessions", "export", "a"])
             .contains("no session")
     );
 }
@@ -122,18 +134,18 @@ fn session_rules() {
 fn export_then_import_round_trips() {
     let e = Env::new("export");
     e.before_and_after(&[]);
-    let dump = e.ok("after", &["session", "export"]);
+    let dump = e.ok("after", &["sessions", "export"]);
     let file = std::env::temp_dir().join(format!("psm-test-{}-export.json", std::process::id()));
     fs::write(&file, &dump).unwrap();
     let path = file.to_str().unwrap();
 
     // Same database: the name is taken, so it needs another one.
     assert!(
-        e.fails("after", &["session", "import", path])
+        e.fails("after", &["sessions", "import", path])
             .contains("pass --name")
     );
     assert!(
-        e.ok("after", &["session", "import", path, "--name", "copy"])
+        e.ok("after", &["sessions", "import", path, "--name", "copy"])
             .contains("2 snapshot(s)")
     );
     let sessions = e.json("after", &["sessions", "--json"]);
@@ -148,14 +160,16 @@ fn export_then_import_round_trips() {
 
     // The copy is the same data: comparing it with the original finds nothing,
     // and its own diff is the original diff.
-    let cmp = e.json("after", &["compare", "t", "copy", "--json"]);
+    let cmp = e.json("after", &["sessions", "compare", "t", "copy", "--json"]);
     assert_eq!(cmp["programs"], serde_json::json!([]));
-    let copy = e.json("after", &["--session", "copy", "diff", "--json"]);
+    e.ok("after", &["sessions", "activate", "copy"]);
+    let copy = e.json("after", &["diff", "--json"]);
     assert_eq!(copy["net_change"], -36 * MIB);
-    assert_eq!(copy["to"]["label"], "after");
+    assert_eq!(copy["to"]["label"], "now");
+    e.ok("after", &["sessions", "activate", "t"]);
     // Re-exporting the copy gives the same snapshots; only the ids are new.
     let original: Value = serde_json::from_str(&dump).unwrap();
-    let again = e.json("after", &["session", "export", "copy"]);
+    let again = e.json("after", &["sessions", "export", "copy"]);
     for i in 0..2 {
         for part in [
             "processes",
@@ -172,15 +186,13 @@ fn export_then_import_round_trips() {
         }
     }
 
-    // The global --session selects the session too; bare `psm session` is a usage error.
-    let via_flag = e.json("after", &["--session", "copy", "session", "export"]);
-    assert_eq!(via_flag["session"]["name"], "copy");
+    // activate needs a name; `session` is no command.
     assert!(
-        e.fails("after", &["session"])
-            .contains("Usage: psm session")
+        e.fails("after", &["sessions", "activate"])
+            .contains("required")
     );
     assert!(
-        e.fails("after", &["export"])
+        e.fails("after", &["session", "a"])
             .contains("unrecognized subcommand")
     );
 
@@ -188,7 +200,7 @@ fn export_then_import_round_trips() {
     let other = Env::new("import");
     let mut child = other
         .command("after")
-        .args(["--config", "/dev/null", "session", "import", "-"])
+        .args(["--config", "/dev/null", "sessions", "import", "-"])
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
         .spawn()
@@ -201,7 +213,7 @@ fn export_then_import_round_trips() {
         .unwrap();
     assert!(child.wait_with_output().unwrap().status.success());
     assert_eq!(
-        other.json("after", &["--session", "t", "snapshots", "--json"])[1]["label"],
+        other.json("after", &["sessions", "export", "t"])["snapshots"][1]["label"],
         "after"
     );
     assert!(
@@ -210,7 +222,7 @@ fn export_then_import_round_trips() {
     );
 
     // --all: every session in one file, imported in one go, atomically.
-    let everything = e.ok("after", &["session", "export", "--all"]);
+    let everything = e.ok("after", &["sessions", "export", "--all"]);
     let parsed: Value = serde_json::from_str(&everything).unwrap();
     assert_eq!(
         parsed["sessions"].as_array().unwrap().len(),
@@ -218,29 +230,29 @@ fn export_then_import_round_trips() {
         "t and copy"
     );
     assert!(
-        e.fails("after", &["session", "export", "--all", "--format", "csv"])
+        e.fails("after", &["sessions", "export", "--all", "--format", "csv"])
             .contains("JSON only")
     );
     assert!(
-        e.fails("after", &["session", "export", "--all", "t"])
+        e.fails("after", &["sessions", "export", "--all", "t"])
             .contains("cannot be used with")
     );
     let all_file = file.with_extension("all.json");
     fs::write(&all_file, &everything).unwrap();
     let all_path = all_file.to_str().unwrap();
     assert!(
-        e.fails("after", &["session", "import", all_path, "--name", "x"])
+        e.fails("after", &["sessions", "import", all_path, "--name", "x"])
             .contains("single-session")
     );
     let third = Env::new("import-all");
-    let o = third.ok("after", &["session", "import", all_path]);
+    let o = third.ok("after", &["sessions", "import", all_path]);
     assert_eq!(o.matches("Imported session").count(), 2, "{o}");
     let names = third.json("after", &["sessions", "--json"]);
     assert_eq!(column(names.as_array().unwrap(), "name"), ["t", "copy"]);
     // A clash on any name imports nothing.
     assert!(
         third
-            .fails("after", &["session", "import", all_path])
+            .fails("after", &["sessions", "import", all_path])
             .contains("already exists")
     );
     assert_eq!(
@@ -255,8 +267,143 @@ fn export_then_import_round_trips() {
 
     fs::write(&file, "{\"hello\": 1}").unwrap();
     assert!(
-        e.fails("after", &["session", "import", path])
+        e.fails("after", &["sessions", "import", path])
             .contains("not a psm export")
     );
     fs::remove_file(&file).unwrap();
+}
+
+#[test]
+fn snapshot_group() {
+    let e = Env::new("snapshot-group");
+    e.before_and_after(&[]); // #0 baseline, #1 after
+    assert!(e.ok("before", &["snap", "two"]).contains("Snapshot #2 two"));
+    assert!(
+        e.ok("after", &["--snap", "three"])
+            .contains("Snapshot #3 three")
+    );
+
+    // Deleting leaves the other numbers alone; the baseline and `now` cannot go.
+    assert!(
+        e.ok("after", &["snapshots", "delete", "1"])
+            .contains("Deleted snapshot #1 after")
+    );
+    let numbers = |extra: &[&str]| -> Vec<i64> {
+        e.json("after", &[extra, &["snapshots", "--json"]].concat())
+            .as_array()
+            .unwrap()
+            .iter()
+            .filter_map(|r| r["id"].as_i64())
+            .collect()
+    };
+    assert_eq!(numbers(&[]), [0, 2, 3]);
+    assert!(
+        e.fails("after", &["snapshots", "delete", "baseline"])
+            .contains("cannot be deleted on its own")
+    );
+    assert!(
+        e.fails("after", &["snapshots", "delete", "now"])
+            .contains("live state")
+    );
+    assert!(
+        e.fails("after", &["snapshots", "delete", "9"])
+            .contains("no snapshot")
+    );
+    assert!(
+        e.ok("after", &["snap", "four"])
+            .contains("Snapshot #4 four")
+    );
+    assert_eq!(numbers(&[]), [0, 2, 3, 4]);
+
+    // One snapshot out, into another session and back into this one.
+    let dump = e.ok("after", &["export", "2"]);
+    let v: Value = serde_json::from_str(&dump).unwrap();
+    assert_eq!(v["snapshots"].as_array().unwrap().len(), 1);
+    assert_eq!(v["snapshots"][0]["label"], "two");
+    let file = std::env::temp_dir().join(format!("psm-test-{}-snap.json", std::process::id()));
+    fs::write(&file, &dump).unwrap();
+    let path = file.to_str().unwrap();
+    e.ok("after", &["new", "b"]);
+    assert!(
+        e.ok("after", &["import", path])
+            .contains("into session \"b\" as #1")
+    );
+    e.ok("after", &["sessions", "activate", "t"]);
+    assert!(
+        e.ok("after", &["import", path])
+            .contains("into session \"t\" as #5")
+    );
+    assert_eq!(numbers(&[]), [0, 2, 3, 4, 5]);
+    assert_eq!(
+        e.json("after", &["diff", "2", "5", "--json"])["net_change"],
+        0
+    );
+    e.ok("after", &["sessions", "activate", "b"]);
+    // The file's baseline joins as a plain snapshot: the session keeps its own.
+    fs::write(&file, e.ok("after", &["export", "baseline"])).unwrap();
+    e.ok("after", &["import", path]);
+    assert_eq!(e.json("after", &["snapshots", "--json"])[2]["label"], "");
+    fs::remove_file(&file).unwrap();
+
+    assert!(
+        e.fails("after", &["export", "now"])
+            .contains("never stored")
+    );
+    assert!(
+        e.ok("after", &["export", "--format", "csv"])
+            .starts_with("snapshot_id,label")
+    );
+    assert!(
+        e.fails("after", &["snapshot", "export"])
+            .contains("unrecognized subcommand")
+    );
+
+    // purge starts the active session over: without a yes nothing happens.
+    assert!(
+        e.ok("after", &["snapshots", "reset"])
+            .contains("Nothing was deleted")
+    );
+    assert_eq!(numbers(&[]), [0, 1, 2]);
+    let purged = e.ok("after", &["snapshots", "reset", "--yes"]);
+    assert!(
+        purged.contains("purged: 3 snapshot(s) deleted") && purged.contains("New baseline #0"),
+        "{purged}"
+    );
+    assert_eq!(numbers(&[]), [0]);
+    assert_eq!(
+        e.json("after", &["status", "--json"])["session"]["name"],
+        "b"
+    );
+    // snapshots reset is purge under another name.
+    e.ok("after", &["snap", "y"]);
+    assert!(
+        e.ok("before", &["snapshots", "reset", "-y"])
+            .contains("purged: 2 snapshot(s) deleted")
+    );
+    assert_eq!(numbers(&[]), [0]);
+    // delete without a reference takes the latest; the last one is replaced by a new baseline.
+    e.ok("after", &["snap", "x"]);
+    assert!(
+        e.ok("after", &["snapshots", "delete"])
+            .contains("Deleted snapshot #1 x")
+    );
+    assert_eq!(numbers(&[]), [0]);
+    let last = e.ok("before", &["snapshots", "delete"]);
+    assert!(
+        last.contains("the only one in session \"b\"") && last.contains("New baseline #0"),
+        "{last}"
+    );
+    assert_eq!(numbers(&[]), [0]);
+    assert_eq!(
+        e.json("after", &["diff", "--json"])["net_change"],
+        -36 * MIB,
+        "the new baseline is the 'before' state"
+    );
+    assert_eq!(
+        e.json("after", &["sessions", "--json"])
+            .as_array()
+            .unwrap()
+            .len(),
+        2
+    );
 }

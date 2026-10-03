@@ -1,5 +1,6 @@
-//! Sessions: `status`, `sessions`, `snapshots`, `switch`, and the
-//! `psm session` group (export, import, deactivate, delete).
+//! Sessions: `status`, `sessions`, `snapshots`, `switch`, the
+//! `psm sessions` group (export, import, delete, ...), `activate`/`deactivate`, and the
+//! single-snapshot commands `export`, `import`, `snapshots delete`.
 
 use std::path::Path;
 
@@ -7,7 +8,7 @@ use anyhow::{Context, Result, bail};
 
 use super::Ctx;
 use crate::analysis::reports;
-use crate::cli::{ExportFormat, FilterArgs};
+use crate::cli::{CaptureArgs, ExportFormat, FilterArgs};
 use crate::model::Snapshot;
 use crate::output::{Cell, Table, export, out, print_json};
 use crate::store::Session;
@@ -15,7 +16,7 @@ use crate::store::Session;
 /// Bare `psm` / `psm status`.
 pub fn status(ctx: &Ctx) -> Result<()> {
     let db = ctx.db()?;
-    let session = db.session(ctx.session.as_deref())?;
+    let session = db.session(None)?;
     let (text, doc) = reports::status(&db, &session, &ctx.filter(&FilterArgs::default())?)?;
     if ctx.json {
         print_json(&doc)
@@ -27,7 +28,7 @@ pub fn status(ctx: &Ctx) -> Result<()> {
 
 pub fn snapshots(ctx: &Ctx) -> Result<()> {
     let db = ctx.db()?;
-    let session = db.session(ctx.session.as_deref())?;
+    let session = db.session(None)?;
     let mut t = Table::new(&[
         ("ID", "id"),
         ("LABEL", "label"),
@@ -37,13 +38,31 @@ pub fn snapshots(ctx: &Ctx) -> Result<()> {
     ]);
     for s in db.snapshots(session.id, ctx.kernel)? {
         t.rows.push(vec![
-            Cell::Int(Some(s.id)),
+            Cell::Int(Some(s.seq)),
             Cell::text(s.label.unwrap_or_default()),
             Cell::text(s.created),
             Cell::Int(Some(s.processes)),
             Cell::text(if s.deep { "yes" } else { "" }),
         ]);
     }
+    // The live state closes the list: `>` in the ID column (null in JSON), label `now`.
+    let live = super::capture::live_snapshot(ctx, None)?;
+    let procs = live
+        .processes
+        .iter()
+        .filter(|p| ctx.kernel || !p.kthread)
+        .count();
+    t.rows.push(vec![
+        if ctx.json {
+            Cell::Int(None)
+        } else {
+            Cell::text(">")
+        },
+        Cell::text("now"),
+        Cell::text(db.now_local()?),
+        Cell::Int(Some(procs as i64)),
+        Cell::text(""),
+    ]);
     ctx.emit(&t, false);
     Ok(())
 }
@@ -114,8 +133,7 @@ pub fn export(
         }
         print_json(&export::all_to_json(&sessions, !no_cmdline)?);
     } else {
-        // The positional name wins over the global --session.
-        let session = db.session(session.as_deref().or(ctx.session.as_deref()))?;
+        let session = db.session(session.as_deref())?;
         let snapshots = load(&session)?;
         match format {
             ExportFormat::Json => print_json(&export::to_json(&session, &snapshots, !no_cmdline)?),
@@ -125,13 +143,18 @@ pub fn export(
     Ok(())
 }
 
-pub fn import(ctx: &Ctx, file: &Path, name: Option<String>) -> Result<()> {
+/// The export file to import; `-` is standard input.
+fn read_export(file: &Path) -> Result<Vec<(String, Vec<Snapshot>)>> {
     let text = if file == Path::new("-") {
         std::io::read_to_string(std::io::stdin()).context("cannot read standard input")?
     } else {
         std::fs::read_to_string(file).with_context(|| format!("cannot read {}", file.display()))?
     };
-    let mut sessions = export::from_json(&text)?;
+    export::from_json(&text)
+}
+
+pub fn import(ctx: &Ctx, file: &Path, name: Option<String>) -> Result<()> {
+    let mut sessions = read_export(file)?;
     if let Some(name) = name {
         if sessions.len() > 1 {
             bail!(
@@ -144,8 +167,8 @@ pub fn import(ctx: &Ctx, file: &Path, name: Option<String>) -> Result<()> {
     for session in ctx.db()?.import(&sessions)? {
         out(format!(
             "Imported session {:?} with {} snapshot(s). It is inactive: read it with \
-             `psm --session {} snapshots`, or make it active with `psm switch {}`.",
-            session.name, session.snapshots, session.id, session.id
+             `psm sessions activate {}` makes it active.",
+            session.name, session.snapshots, session.id
         ));
     }
     Ok(())
@@ -153,10 +176,10 @@ pub fn import(ctx: &Ctx, file: &Path, name: Option<String>) -> Result<()> {
 
 pub fn deactivate(ctx: &Ctx) -> Result<()> {
     let db = ctx.db()?;
-    let session = db.session(ctx.session.as_deref())?;
+    let session = db.session(None)?;
     db.deactivate(session.id)?;
     out(format!(
-        "Session {:?} is now inactive. Its data is kept; `psm switch {}` makes it active again.",
+        "Session {:?} is now inactive. Its data is kept; `psm sessions activate {}` makes it active again.",
         session.name, session.id
     ));
     Ok(())
@@ -169,6 +192,83 @@ pub fn delete(ctx: &Ctx, session: &str) -> Result<()> {
     out(format!(
         "Deleted session {:?} and its {} snapshot(s).",
         s.name, s.snapshots
+    ));
+    Ok(())
+}
+
+/// `psm export [ref]`: one stored snapshot, in the session export format.
+pub fn export_snapshot(
+    ctx: &Ctx,
+    snapshot: Option<String>,
+    format: ExportFormat,
+    no_cmdline: bool,
+) -> Result<()> {
+    let db = ctx.db()?;
+    let session = db.session(None)?;
+    let reference = snapshot.as_deref().unwrap_or("latest");
+    if reference == "now" {
+        bail!("`now` is the live state and is never stored; `psm snap` first, then export it");
+    }
+    let s = db.load(db.resolve(&session, reference)?)?;
+    match format {
+        ExportFormat::Json => print_json(&export::to_json(
+            &session,
+            std::slice::from_ref(&s),
+            !no_cmdline,
+        )?),
+        ExportFormat::Csv => out(export::to_csv(std::slice::from_ref(&s), !no_cmdline)?),
+    }
+    Ok(())
+}
+
+/// `psm import <file>`: every snapshot in the file joins the session.
+pub fn import_snapshots(ctx: &Ctx, file: &Path) -> Result<()> {
+    let snapshots: Vec<Snapshot> = read_export(file)?
+        .into_iter()
+        .flat_map(|(_, snaps)| snaps)
+        .collect();
+    let db = ctx.db()?;
+    let session = db.session(None)?;
+    let numbers = db.add_snapshots(session.id, &snapshots)?;
+    let list: Vec<String> = numbers.iter().map(|n| format!("#{n}")).collect();
+    out(format!(
+        "Imported {} snapshot(s) into session {:?} as {}.",
+        numbers.len(),
+        session.name,
+        list.join(", ")
+    ));
+    Ok(())
+}
+
+/// `psm snapshots delete [ref]`, default `latest`. The last snapshot of a session is
+/// replaced by a fresh baseline rather than leaving the session empty.
+pub fn delete_snapshot(ctx: &Ctx, snapshot: Option<&str>) -> Result<()> {
+    let snapshot = snapshot.unwrap_or("latest");
+    if snapshot == "now" {
+        bail!("`now` is the live state; there is nothing stored to delete");
+    }
+    let db = ctx.db()?;
+    let session = db.session(None)?;
+    let id = db.resolve(&session, snapshot)?;
+    if session.snapshots == 1 {
+        let fresh = ctx.capture(&CaptureArgs {
+            deep: None,
+            no_cmdline: false,
+        })?;
+        db.restart(session.id, &fresh)?;
+        out(format!(
+            "Deleted snapshot #0 baseline, the only one in session {:?}. New baseline #0: {}.",
+            session.name,
+            super::census(&fresh)
+        ));
+        return Ok(());
+    }
+    let gone = db.delete_snapshot(&session, id)?;
+    out(format!(
+        "Deleted snapshot #{}{} from session {:?}. The other snapshots keep their numbers.",
+        gone.seq,
+        gone.label.map(|l| format!(" {l}")).unwrap_or_default(),
+        session.name
     ));
     Ok(())
 }

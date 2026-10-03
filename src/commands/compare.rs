@@ -67,7 +67,7 @@ pub fn report(ctx: &Ctx, kind: ReportKind, args: &DiffArgs) -> Result<()> {
     let db = ctx.db()?;
     let section = match kind {
         ReportKind::Timeline => {
-            let session = db.session(ctx.session.as_deref())?;
+            let session = db.session(None)?;
             let table = reports::timeline_table(&db, &session, &ctx.filter(&args.filter)?)?;
             ctx.emit(&table, false);
             return Ok(());
@@ -86,7 +86,7 @@ pub fn report(ctx: &Ctx, kind: ReportKind, args: &DiffArgs) -> Result<()> {
     compare(ctx, &a, &b, args, &[section])
 }
 
-/// `psm compare a b`: two sessions by program, using the latest snapshot of each.
+/// `psm sessions compare a b`: two sessions by program, using the latest snapshot of each.
 pub fn sessions(
     ctx: &Ctx,
     a: &str,
@@ -117,15 +117,9 @@ pub fn sessions(
 /// No argument: baseline -> now. One: `<ref> -> now`. Two: as given.
 /// `now` is the live state; `prev` is the snapshot before the one it is compared with.
 fn pair(ctx: &Ctx, db: &Db, args: &DiffArgs) -> Result<(Snapshot, Snapshot)> {
-    let session = db.session(ctx.session.as_deref())?;
-    // An inactive session is compared within itself, the active one against the live state.
-    let target = if session.inactive_since.is_some() {
-        "latest"
-    } else {
-        "now"
-    };
+    let session = db.session(None)?;
     let a_ref = args.a.as_deref().unwrap_or("baseline");
-    let b_ref = args.b.as_deref().unwrap_or(target);
+    let b_ref = args.b.as_deref().unwrap_or("now");
     if a_ref == "now" && b_ref == "now" {
         bail!("nothing to compare: both sides are `now`");
     }
@@ -229,7 +223,7 @@ fn compare(
 
     let mut doc = Map::new();
     // The live state has no id.
-    let side = |s: &Snapshot| json!({ "id": (s.id != 0).then_some(s.id), "label": s.label });
+    let side = |s: &Snapshot| json!({ "id": (!s.is_live()).then_some(s.id), "label": s.label });
     doc.insert("from".into(), side(a));
     doc.insert("to".into(), side(b));
     let top = s.top;

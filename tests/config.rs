@@ -21,7 +21,7 @@ fn config_file_rules() {
     let run = |configure: &dyn Fn(&mut Command), args: &[&str]| {
         let mut c = e.command("before");
         configure(&mut c);
-        c.args(["list", "--interval", "0", "--sort", "pid", "--json"])
+        c.args(["procs", "--interval", "0", "--sort", "pid", "--json"])
             .args(args)
             .output()
             .unwrap()
@@ -108,7 +108,25 @@ fn first_init_leaves_a_config_file() {
     let stdout = |o: &Output| String::from_utf8_lossy(&o.stdout).into_owned();
 
     assert!(stdout(&psm(&["config"])).contains("not found; built-in defaults apply"));
-    psm(&["list", "--interval", "0"]);
+    // A bare --config (no path, no command) is the same as `psm config`.
+    assert_eq!(stdout(&psm(&["--config"])), stdout(&psm(&["config"])));
+    // A bare --db shows the database in use, before and after it exists.
+    let o = psm(&["--db"]);
+    assert!(
+        o.status.success()
+            && stdout(&o).contains("Database: ")
+            && stdout(&o).contains("not created yet"),
+        "{}",
+        stdout(&o)
+    );
+    // With a command, a bare --config is simply the default file.
+    let o = psm(&["procs", "--interval", "0", "--config"]);
+    assert!(
+        o.status.success() && stdout(&o).contains("PID"),
+        "{}",
+        stdout(&o)
+    );
+    psm(&["procs", "--interval", "0"]);
     assert!(!file.exists(), "only `new` creates the file");
 
     let o = psm(&["new", "one"]);
@@ -120,6 +138,7 @@ fn first_init_leaves_a_config_file() {
     let text = fs::read_to_string(&file).unwrap();
     assert!(text.contains("[collection]") && text.contains("min_memory_delta"));
     assert!(stdout(&psm(&["config"])).contains("(in use)"));
+    assert!(stdout(&psm(&["--db"])).contains("exists, 1 session(s)"));
 
     // It is the user's file from then on: never rewritten.
     fs::write(&file, "[display]\nkernel = true\n").unwrap();
@@ -197,6 +216,26 @@ fn init_sets_everything_up_and_is_repeatable() {
     );
     let t = text(&psm(&["init"], "/bin/weird"));
     assert!(t.contains("not recognised"), "{t}");
+
+    // `init force`: without a yes nothing changes; with it, config and database are recreated.
+    let config_file = home.join("config/psm/config.toml");
+    fs::write(&config_file, "[display]\nkernel = true\n").unwrap();
+    let o = psm(&["init", "force"], "/bin/bash");
+    assert!(text(&o).contains("Nothing was changed"), "{}", text(&o));
+    assert_eq!(
+        fs::read_to_string(&config_file).unwrap(),
+        "[display]\nkernel = true\n"
+    );
+    let t = text(&psm(&["init", "force", "--yes"], "/bin/bash"));
+    assert!(
+        t.contains("config.toml (created)") && t.contains("(created)\n"),
+        "{t}"
+    );
+    assert!(
+        fs::read_to_string(&config_file)
+            .unwrap()
+            .contains("[collection]")
+    );
 
     fs::remove_dir_all(&home).unwrap();
 }

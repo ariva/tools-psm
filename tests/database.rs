@@ -40,7 +40,7 @@ fn database_is_private_versioned_and_kept() {
     )
     .unwrap();
     assert!(
-        e.ok("after", &["purge", "--older-than", "180d"])
+        e.ok("after", &["sessions", "purge", "--older-than", "180d"])
             .contains("1 inactive session(s)")
     );
     let left = e.json("after", &["sessions", "--json"]);
@@ -59,12 +59,12 @@ fn database_is_private_versioned_and_kept() {
     drop(conn);
     assert!(
         e.fails("after", &["sessions"])
-            .contains("schema 99, expected 1")
+            .contains("schema 99, expected 2")
     );
 
     // `reset` is the way out of a database this version cannot read.
     assert!(
-        e.ok("after", &["reset", "--yes"])
+        e.ok("after", &["sessions", "reset", "--yes"])
             .contains("a database that cannot be read")
     );
     assert!(!e.db.exists());
@@ -77,14 +77,17 @@ fn database_is_private_versioned_and_kept() {
 #[test]
 fn reset_deletes_everything_only_after_a_yes() {
     let e = Env::new("reset");
-    assert!(e.ok("before", &["reset"]).contains("Nothing to reset"));
+    assert!(
+        e.ok("before", &["sessions", "reset"])
+            .contains("Nothing to reset")
+    );
     e.ok("before", &["new", "one"]);
     e.ok("before", &["new", "two"]);
 
     let answer = |input: &str| -> Output {
         let mut child = e
             .command("before")
-            .args(["--config", "/dev/null", "reset"])
+            .args(["--config", "/dev/null", "sessions", "reset"])
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
             .stderr(Stdio::piped())

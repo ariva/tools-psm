@@ -31,9 +31,9 @@ check: lint test
 run *args:
     cargo run -q -- {{args}}
 
-# install into ~/.cargo/bin; extra flags pass through: just install --force
+# install into ~/.cargo/bin, overwriting any existing binary, deps pinned to Cargo.lock; extra flags pass through
 install *args:
-    cargo install --path . {{args}}
+    cargo install --path . --force --locked {{args}}
 
 # Static x86_64 builds: one file that runs on any x86_64 Linux, no glibc
 # version to match. Needs the musl target and C compiler once:

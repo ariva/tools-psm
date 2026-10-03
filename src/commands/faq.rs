@@ -13,7 +13,7 @@ const FAQ: &[(&str, &[(&str, &str)])] = &[
             ("What is using the machine right now?", "psm info"),
             (
                 "Which application uses the most memory, helpers included?",
-                "psm list --group app",
+                "psm procs --group app",
             ),
             ("What changed since I started?", "psm diff"),
             ("What changed since my last snapshot?", "psm diff prev"),
@@ -24,11 +24,11 @@ const FAQ: &[(&str, &[(&str, &str)])] = &[
             ),
             (
                 "What is this process, and where does it come from?",
-                "psm list --name X --group exe   (then parent, cmdline)",
+                "psm procs --name X --group exe   (then parent, cmdline)",
             ),
             (
                 "Who started this process?",
-                "psm list --name X --group parent",
+                "psm procs --name X --group parent",
             ),
             (
                 "Which part of an application grew?",
@@ -41,11 +41,11 @@ const FAQ: &[(&str, &[(&str, &str)])] = &[
             ("Is it still growing?", "psm report timeline --name X"),
             (
                 "Which of its processes is busy right now?",
-                "psm list --name X --sort cpu --top 3",
+                "psm procs --name X --sort cpu --top 3",
             ),
             (
                 "Did the new version use more memory?",
-                "psm compare old new --name X",
+                "psm sessions compare old new --name X",
             ),
             (
                 "How do I keep this state for later?",
@@ -54,7 +54,11 @@ const FAQ: &[(&str, &[(&str, &str)])] = &[
             ("How do I start a new experiment?", "psm new chrome-update"),
             (
                 "How do I go back to an earlier experiment?",
-                "psm sessions, then psm switch <name>",
+                "psm sessions, then psm sessions activate <name>",
+            ),
+            (
+                "Which snapshots do I have?",
+                "psm list   (the last row, > now, is the live state)",
             ),
         ],
     ),
@@ -63,27 +67,27 @@ const FAQ: &[(&str, &[(&str, &str)])] = &[
         &[
             (
                 "Which processes are swapped out?",
-                "psm list --sort swap --top 10",
+                "psm procs --sort swap --top 10",
             ),
             (
                 "Which processes have done the most disk I/O?",
-                "psm list --sort io --top 10",
+                "psm procs --sort io --top 10",
             ),
             (
                 "How many processes does each program run?",
-                "psm list --group name --sort count",
+                "psm procs --group name --sort count",
             ),
             (
                 "How much memory does each user take?",
-                "psm list --group user",
+                "psm procs --group user",
             ),
             (
                 "How much memory does each service or container take?",
-                "psm list --group cgroup",
+                "psm procs --group cgroup",
             ),
             (
                 "Which processes run this exact binary?",
-                "psm list --exe /opt/google/chrome/chrome",
+                "psm procs --exe /opt/google/chrome/chrome",
             ),
         ],
     ),
@@ -105,10 +109,10 @@ const FAQ: &[(&str, &[(&str, &str)])] = &[
                 "Which program burned the most CPU since my last snapshot?",
                 "psm report cpu prev",
             ),
-            ("How do I compare two specific snapshots?", "psm diff 1 2"),
+            ("How do I compare two specific snapshots?", "psm diff 0 2"),
             (
                 "What was in a snapshot I took earlier?",
-                "psm snapshots, then psm show <id>",
+                "psm list, then psm procs show <n>",
             ),
         ],
     ),
@@ -121,7 +125,7 @@ const FAQ: &[(&str, &[(&str, &str)])] = &[
             ),
             (
                 "How do I see PSS instead of RSS?",
-                "psm list --deep, psm snap --deep",
+                "psm procs --deep, psm snap --deep",
             ),
             (
                 "Why is a value n/a?",
@@ -143,11 +147,11 @@ const FAQ: &[(&str, &[(&str, &str)])] = &[
         &[
             (
                 "How do I move a session to another machine?",
-                "psm session export > s.json, then psm session import s.json",
+                "psm sessions export > s.json, then psm sessions import s.json",
             ),
             (
                 "How do I move everything to another machine?",
-                "psm session export --all > all.json, then psm session import all.json",
+                "psm sessions export --all > all.json, then psm sessions import all.json",
             ),
             (
                 "How do I change the defaults?",
@@ -155,10 +159,31 @@ const FAQ: &[(&str, &[(&str, &str)])] = &[
             ),
             (
                 "How do I delete old sessions?",
-                "psm purge --older-than 180d",
+                "psm sessions purge --older-than 180d",
             ),
             ("How do I back up everything?", "psm backup ~/psm-backup.db"),
-            ("How do I start over completely?", "psm reset"),
+            (
+                "How do I start over completely?",
+                "psm sessions reset (the database), psm init force (database and config)",
+            ),
+            (
+                "How do I delete one snapshot?",
+                "psm snapshots delete 2 (a number or label; no argument: the latest)",
+            ),
+            (
+                "How do I start the current session over?",
+                "psm snapshots reset (all its snapshots go, a new baseline is taken)",
+            ),
+            (
+                "How do I copy one snapshot into another session?",
+                "psm export 2 > s.json, then psm sessions activate other and psm import s.json",
+            ),
+            (
+                "Which config file and database are in use?",
+                "psm --config, psm --db",
+            ),
+            ("How do I get tab completion?", "psm init"),
+            ("Which version is this?", "psm version"),
         ],
     ),
 ];

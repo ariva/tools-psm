@@ -9,7 +9,7 @@ use common::*;
 #[test]
 fn list_reads_the_process_table() {
     let e = Env::new("list");
-    let list = e.json("before", &["list", "--interval", "0", "--json"]);
+    let list = e.json("before", &["procs", "--interval", "0", "--json"]);
     let list = list.as_array().unwrap();
     assert_eq!(
         column(list, "command"),
@@ -29,7 +29,7 @@ fn list_reads_the_process_table() {
     let all = e.json(
         "before",
         &[
-            "list",
+            "procs",
             "--interval",
             "0",
             "--kernel",
@@ -43,7 +43,7 @@ fn list_reads_the_process_table() {
 
     let groups = e.json(
         "before",
-        &["list", "--interval", "0", "--group", "cgroup", "--json"],
+        &["procs", "--interval", "0", "--group", "cgroup", "--json"],
     );
     assert_eq!(groups[0]["name"], "app-code.scope");
     assert_eq!(groups[0]["cgroup_memory"], 1200 * MIB);
@@ -57,7 +57,7 @@ fn list_reads_the_process_table() {
     // node (600) was started by code (100): one application.
     let apps = e.json(
         "after",
-        &["list", "--interval", "0", "--group", "app", "--json"],
+        &["procs", "--interval", "0", "--group", "app", "--json"],
     );
     assert_eq!(apps[0]["name"], "code");
     assert_eq!(apps[0]["count"], 2);
@@ -66,7 +66,7 @@ fn list_reads_the_process_table() {
     assert_eq!(list[0]["ppid"], 1, "every row carries its parent pid");
     let parents = e.json(
         "after",
-        &["list", "--interval", "0", "--group", "parent", "--json"],
+        &["procs", "--interval", "0", "--group", "parent", "--json"],
     );
     let code = parents
         .as_array()
@@ -92,19 +92,19 @@ fn list_reads_the_process_table() {
         e.fails("before", &["info", "--by", "luck"])
             .contains("invalid value 'luck'")
     );
-    let err = e.fails("before", &["list", "--group", "colour"]);
+    let err = e.fails("before", &["procs", "--group", "colour"]);
     assert!(
         err.contains("invalid value 'colour'") && err.contains("name"),
         "{err}"
     );
     // The kernel's term is no longer a key: grouping by program is `--group name`.
     assert!(
-        e.fails("before", &["list", "--group", "comm"])
+        e.fails("before", &["procs", "--group", "comm"])
             .contains("invalid value")
     );
     let by_name = e.json(
         "before",
-        &["list", "--interval", "0", "--group", "name", "--json"],
+        &["procs", "--interval", "0", "--group", "name", "--json"],
     );
     assert_eq!(by_name[0]["name"], "code");
 }

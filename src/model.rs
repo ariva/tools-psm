@@ -48,6 +48,8 @@ pub struct CgroupMem {
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 #[serde(default)]
 pub struct Snapshot {
+    /// Number within its session: 0 is the baseline, then 1, 2, ... Not a
+    /// database id; those stay inside `store`. The live snapshot has none.
     pub id: i64,
     pub label: Option<String>,
     pub created_at: String,
@@ -72,9 +74,14 @@ pub struct Snapshot {
 
 impl Snapshot {
     /// `#107 after-1-hour`, or `now` for the live state, which is never stored.
+    /// The live state, collected for one command and never stored.
+    pub fn is_live(&self) -> bool {
+        self.label.as_deref() == Some("now")
+    }
+
     pub fn title(&self) -> String {
         match &self.label {
-            _ if self.id == 0 => "now".into(),
+            _ if self.is_live() => "now".into(),
             Some(l) => format!("#{} {l}", self.id),
             None => format!("#{}", self.id),
         }

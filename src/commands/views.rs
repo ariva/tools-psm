@@ -36,7 +36,7 @@ pub fn info(
     let mut text = vec![header];
     let mut doc = Map::from_iter([("system".to_string(), system)]);
     for metric in by {
-        // Every table is exactly `psm list --sort <metric> --top <n>` over the same pass.
+        // Every table is exactly `psm procs --sort <metric> --top <n>` over the same pass.
         let view = View {
             group: group.clone(),
             sort: metric.clone(),
@@ -63,7 +63,7 @@ pub fn info(
 
 pub fn show(ctx: &Ctx, snapshot: &str, view: &ViewArgs) -> Result<()> {
     let db = ctx.db()?;
-    let session = db.session(ctx.session.as_deref())?;
+    let session = db.session(None)?;
     let s = match snapshot {
         "now" => super::capture::live_snapshot(ctx, None)?,
         stored => db.load(db.resolve(&session, stored)?)?,

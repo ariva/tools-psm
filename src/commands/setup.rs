@@ -4,7 +4,6 @@
 use std::path::{Path, PathBuf};
 
 use anyhow::{Context, Result, bail};
-use clap::CommandFactory;
 
 use crate::cli::Cli;
 use crate::config;
@@ -38,10 +37,47 @@ fn completion_target(shell: clap_complete::Shell) -> Option<(PathBuf, &'static s
 
 /// `psm init`: everything a first run needs, reported line by line.
 pub fn init(cli: &Cli) -> Result<()> {
-    let config_path = match cli.config.clone().or_else(config::default_path) {
+    let config_path = match cli.config_path().or_else(config::default_path) {
         Some(p) => p,
         None => bail!("cannot locate the config file: HOME is not set; pass --config"),
     };
+    if let Some(yes) = cli.init_force() {
+        // The database named by the current config goes too, so read it before deleting.
+        let cfg = if config_path.exists() {
+            config::load(Some(&config_path))?
+        } else {
+            config::Config::default()
+        };
+        let db_path = match (cli.db_flag(), &cfg.database) {
+            (Some(p), _) => p,
+            (None, Some(p)) => config::expand_tilde(p),
+            (None, None) => config::default_db_path()?,
+        };
+        let db_state = if db_path.exists() {
+            db_contents(&db_path).unwrap_or_else(|e| format!("cannot be read: {e}"))
+        } else {
+            "does not exist".to_string()
+        };
+        if !yes
+            && !super::maintenance::confirmed(&format!(
+                "This permanently deletes the database {} ({db_state}) and rewrites the config file {} with the defaults.\n\
+                 `psm backup <path>` makes a copy of the database first.\n\
+                 Start from scratch?",
+                db_path.display(),
+                config_path.display()
+            ))
+        {
+            out("Nothing was changed.");
+            return Ok(());
+        }
+        if db_path.exists() {
+            super::maintenance::remove_database(&db_path)?;
+        }
+        if config_path.exists() {
+            std::fs::remove_file(&config_path)
+                .with_context(|| format!("cannot delete {}", config_path.display()))?;
+        }
+    }
     let config_state = if config_path.exists() {
         "exists"
     } else {
@@ -54,14 +90,13 @@ pub fn init(cli: &Cli) -> Result<()> {
     ));
 
     let cfg = config::load(Some(&config_path))?;
-    let db_path = match (&cli.db, &cfg.database) {
-        (Some(p), _) => p.clone(),
+    let db_path = match (cli.db_flag(), &cfg.database) {
+        (Some(p), _) => p,
         (None, Some(p)) => config::expand_tilde(p),
         (None, None) => config::default_db_path()?,
     };
     let db_state = if db_path.exists() {
-        let sessions = Db::open(&db_path)?.sessions()?.len();
-        format!("exists, {sessions} session(s)")
+        db_contents(&db_path)?
     } else {
         Db::open(&db_path)?;
         "created".to_string()
@@ -80,9 +115,7 @@ pub fn init(cli: &Cli) -> Result<()> {
                 std::fs::create_dir_all(dir)
                     .with_context(|| format!("cannot create {}", dir.display()))?;
             }
-            let mut script = Vec::new();
-            clap_complete::generate(shell, &mut Cli::command(), "psm", &mut script);
-            std::fs::write(&path, script)
+            std::fs::write(&path, crate::cli::completions::script(shell))
                 .with_context(|| format!("cannot write {}", path.display()))?;
             out(format!(
                 "Completions:  {shell} -> {} (written)\n              {note}",
@@ -93,6 +126,25 @@ pub fn init(cli: &Cli) -> Result<()> {
             "Completions:  no standard location for {shell}; use `psm completions {shell}` and install the script by hand."
         )),
     }
+    Ok(())
+}
+
+/// `exists, 3 session(s)`
+fn db_contents(path: &std::path::Path) -> Result<String> {
+    let sessions = Db::open(path)?.sessions()?.len();
+    Ok(format!("exists, {sessions} session(s)"))
+}
+
+/// `psm --db` alone: which database file is in use, after the flag, `PSM_DB`,
+/// the config file and the default have been merged.
+pub fn database(ctx: &super::Ctx) -> Result<()> {
+    let path = ctx.db_path()?;
+    let state = if path.exists() {
+        db_contents(&path)?
+    } else {
+        "not created yet; the first `psm new` creates it".to_string()
+    };
+    out(format!("Database: {} ({state})", path.display()));
     Ok(())
 }
 

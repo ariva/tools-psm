@@ -2,9 +2,10 @@
 name = "tool-psm"
 version = "2.1.6"
 edition = "2024"
+authors = ["Arunas Ivanauskas <arunas.work.hg@gmail.com>"]
 description = "psm (process snapshot manager): named snapshots of the Linux process table and before/after comparison of memory, CPU and process changes"
 license = "MIT"
-repository = "https://github.com/ariva/tools-procs"
+repository = "https://github.com/ariva/tool-psm"
 readme = "README.md"
 keywords = ["process", "memory", "snapshot", "diff", "linux"]
 categories = ["command-line-utilities"]

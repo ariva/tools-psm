@@ -22,7 +22,7 @@ pub fn to_json(session: &Session, snapshots: &[Snapshot], cmdline: bool) -> Resu
     Ok(json!({ "session": session, "snapshots": snaps }))
 }
 
-/// `psm session export --all`: every session, each as `to_json` writes it.
+/// `psm sessions export --all`: every session, each as `to_json` writes it.
 pub fn all_to_json(sessions: &[(Session, Vec<Snapshot>)], cmdline: bool) -> Result<Value> {
     let dumps = sessions
         .iter()
@@ -83,7 +83,7 @@ pub fn from_json(text: &str) -> Result<Vec<(String, Vec<Snapshot>)>> {
         Ok(one) => vec![one],
         Err(_) => {
             serde_json::from_str::<DumpAll>(text)
-                .context("not a psm export: expected the JSON written by `psm session export`")?
+                .context("not a psm export: expected the JSON written by `psm sessions export`")?
                 .sessions
         }
     };

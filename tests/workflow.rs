@@ -12,7 +12,7 @@ fn before_after_workflow() {
     e.ok("before", &["new", "t"]);
     let snap = e.ok("after", &["snap", "after"]);
     assert!(
-        snap.contains("Top memory changes since #1 baseline"),
+        snap.contains("Top memory changes since #0 baseline"),
         "{snap}"
     );
 
@@ -60,7 +60,7 @@ fn before_after_workflow() {
         last.starts_with("Net process change: -36 MiB    System memory used: "),
         "{last}"
     );
-    assert!(text.contains("TOP 5 MEMORY IMPACT   #1 baseline -> now"));
+    assert!(text.contains("TOP 5 MEMORY IMPACT   #0 baseline -> now"));
     let only_memory = e.json("after", &["diff", "--memory", "--json"]);
     assert_eq!(
         only_memory["top"],
@@ -71,16 +71,16 @@ fn before_after_workflow() {
     // Stored against stored; `prev` is the snapshot before the one it is compared with.
     let text = e.ok("after", &["diff", "prev", "latest", "--memory"]);
     assert!(
-        text.starts_with("MEMORY IMPACT   #1 baseline -> #2 after   (RSS + swap)"),
+        text.starts_with("MEMORY IMPACT   #0 baseline -> #1 after   (RSS + swap)"),
         "{text}"
     );
     assert_eq!(
-        e.json("after", &["diff", "1", "after", "--json"])["net_change"],
+        e.json("after", &["diff", "0", "after", "--json"])["net_change"],
         -36 * MIB
     );
     assert!(
         e.fails("after", &["diff", "prev", "baseline"])
-            .contains("no snapshot before #1")
+            .contains("no snapshot before #0")
     );
 
     // Without arguments the target is `now`: the live state, which is never stored.
@@ -93,7 +93,7 @@ fn before_after_workflow() {
     assert_eq!(live["net_change"], 36 * MIB, "back to the 'before' state");
     let text = e.ok("before", &["diff", "latest", "--memory"]);
     assert!(
-        text.starts_with("MEMORY IMPACT   #2 after -> now   (RSS + swap)"),
+        text.starts_with("MEMORY IMPACT   #1 after -> now   (RSS + swap)"),
         "{text}"
     );
     assert_eq!(
@@ -101,14 +101,16 @@ fn before_after_workflow() {
         0
     );
     assert_eq!(
-        e.json("before", &["show", "now", "--json"])[0]["command"],
+        e.json("before", &["procs", "show", "now", "--json"])[0]["command"],
         "code"
     );
     assert_eq!(
         e.json("after", &["snapshots", "--json"])
             .as_array()
             .unwrap()
-            .len(),
+            .iter()
+            .filter(|r| r["id"].is_i64())
+            .count(),
         2,
         "nothing was stored"
     );
@@ -136,7 +138,7 @@ fn deep_snapshots_add_pss() {
     assert_eq!(d["metric"], "PSS + swap");
     assert_eq!(rows(&d, "memory")[0]["delta"], (340 - 800) * MIB);
 
-    let shown = e.json("after", &["show", "baseline", "--json"]);
+    let shown = e.json("after", &["procs", "show", "baseline", "--json"]);
     assert_eq!(shown[0]["pss"], 900 * MIB);
     assert_eq!(shown[3]["pss"], Value::Null, "smaps_rollup not readable");
 

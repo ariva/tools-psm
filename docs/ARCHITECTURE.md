@@ -57,13 +57,15 @@ Nothing below `commands` knows about clap.
 | `cli/mod.rs` | `Cli`: the global options. |
 | `cli/args.rs` | Argument groups shared by several commands: filters, view, capture, diff. |
 | `cli/values.rs` | The fixed value lists with a description per value (group keys, sort columns, metrics, info tables). |
+| `cli/completions.rs` | clap_complete's script plus the commands' flag forms, which it leaves out. |
+| `build.rs` | Stamps the short commit hash (`-dirty` when the tree has changes) and the build date into the binary for `psm version`; "unknown" when git or date is missing. |
 | `cli/commands.rs` | `Cmd`, `SessionCmd`, `ReportKind`, `ExportFormat`, help texts and examples. |
 | `commands/` | One handler file per command group. |
 | `commands/mod.rs` | `Ctx` (flags + environment + config merged) and `run()`, the dispatch. |
-| `commands/views.rs` | `list`, `info`, `show`. |
+| `commands/views.rs` | `procs` (`list`, the default, and `show`), `info`. |
 | `commands/capture.rs` | `new`, `snap`, and the never-stored live snapshot behind `now`. |
 | `commands/compare.rs` | `diff`, `report`, `compare`: reference resolution, diff settings, sections, the closing digest. |
-| `commands/sessions.rs` | `status`, `sessions`, `snapshots`, `switch`, and `session export/import/deactivate/delete`. |
+| `commands/sessions.rs` | `status`, `sessions list/activate/deactivate/export/import/delete`, `snapshots list/delete`, `export`, `import`. |
 | `commands/maintenance.rs` | `purge`, `backup`, `reset`. |
 | `commands/setup.rs` | `init`, `config`, where completion scripts go. |
 | `commands/faq.rs` | The FAQ table and its filter. |
@@ -71,7 +73,7 @@ Nothing below `commands` knows about clap.
 | `collect/raw.rs` | Direct readers for what the crate does not cover: meminfo as raw key/value, uptime, loadavg, cgroup memory files, `/etc/passwd`. |
 | `store/mod.rs` | `Db`: opening the file, schema creation and version check, backup. |
 | `store/sessions.rs` | Active session, switching, deactivating, importing, purging, deleting. |
-| `store/snapshots.rs` | Storing, listing, loading snapshots; resolving `baseline`/`latest`/`prev`/id/label. |
+| `store/snapshots.rs` | Storing, listing, loading, deleting, appending snapshots; resolving `baseline`/`latest`/`prev`/number/label. |
 | `store/schema.sql` | The schema, embedded in the binary. |
 | `analysis/group.rs` | `Grouper`: the group keys, application roots, the launcher list. |
 | `analysis/diff.rs` | Classifies processes between two snapshots and builds the comparison tables. |
@@ -125,12 +127,20 @@ SQLite, one file, five tables:
 
 ```text
 sessions            id, name (unique), created_at, archived_at
-snapshots           id, session_id, label, system figures,
+snapshots           id, session_id, seq, label, system figures,
                     collector_uid, deep, clk_tck, uptime_seconds
 processes           one row per process per snapshot
 snapshot_meminfo    every /proc/meminfo key per snapshot
 snapshot_cgroups    memory.current / memory.swap.current per cgroup
 ```
+
+The snapshot numbers the user sees (`#0 baseline`, `#1`, ... in `psm
+snapshots`, diff headers, `psm diff 0 2`, JSON `id`) are per session:
+the `seq` column, `MAX(seq) + 1` at insert time, never reused. Deleting
+a snapshot (`psm snapshots delete`) therefore leaves the others' numbers
+alone; the baseline (`seq = 0`) only goes with its session. Row ids
+stay inside `store`; `Snapshot::id` is the number. The live state
+(`now`) has no number; `Snapshot::is_live` tells it apart by its label.
 
 - **A snapshot is one transaction.** For `new` that transaction also
   makes the previous session inactive and creates the new one. Collection
@@ -141,7 +151,7 @@ snapshot_cgroups    memory.current / memory.swap.current per cgroup
   is at most one.
 - **Inactive is the `archived_at` column.** The user-facing word is
   *inactive*; the column kept its first name because there are no
-  migrations. `psm switch` sets it on the session that was active and
+  migrations. `psm sessions activate <name>` sets it on the session that was active and
   clears it on the target, in one transaction, so exactly one session
   is active afterwards.
 - **SQLite writes and formats the timestamps** (`strftime('now')` in
@@ -241,7 +251,7 @@ So there is one place where a column is defined and no separate JSON
 structs to keep in step.
 
 All output goes through `format::out`, which exits quietly when the
-pipe is closed (`psm list | head`).
+pipe is closed (`psm procs | head`).
 
 ## Configuration
 
@@ -250,7 +260,10 @@ environment, then config file, then built-in default. Config structs
 reject unknown fields, so a typo fails instead of being ignored.
 
 Exactly one config file is read. `--config` and `PSM_CONFIG` are
-handled by clap as one argument with an environment fallback.
+handled by clap as one argument with an environment fallback. The path
+is optional: a bare `--config` with no command is `psm config`. clap
+skips the environment fallback when the flag is present without a
+value, so `Cli::config_path` reads `PSM_CONFIG` itself in that case.
 
 The file `psm new` creates on first use is `config::TEMPLATE`: every
 key at its built-in default. A unit test asserts that the template
@@ -263,7 +276,15 @@ there too: `init` creates the config file before anything reads it,
 then opens the database (which creates it), then writes the completion
 script for the shell in `$SHELL` to that shell's per-user location. Its script comes from
 `clap_complete` over the same `Cli` definition as `--help`, so a new
-option or value completes without extra work.
+option or value completes without extra work. `cli/completions.rs`
+then adds the flag forms of the commands (`--snapshot`, `-l`), which
+clap_complete's static scripts leave out: bash gets the words and what
+follows them, zsh and fish the words. The anchors it edits are asserted
+by the completions test. `cli::command` also gives every valued
+argument a `ValueHint`, because clap_complete offers file names for
+any value without one: paths complete to files, everything else
+(session names, snapshot references, labels, sizes, user names) to
+nothing.
 
 ## Testing
 

@@ -56,17 +56,17 @@ fn reports_and_export() {
         2
     );
 
-    let csv = e.ok("after", &["session", "export", "--format", "csv"]);
+    let csv = e.ok("after", &["sessions", "export", "--format", "csv"]);
     let header = csv.lines().next().unwrap();
     assert!(header.starts_with("snapshot_id,label,created_at,") && header.contains(",cmdline,"));
     assert_eq!(csv.lines().count(), 1 + 6 + 6);
     assert!(csv.contains("code --type=renderer"));
     let private = e.ok(
         "after",
-        &["session", "export", "--format", "csv", "--no-cmdline"],
+        &["sessions", "export", "--format", "csv", "--no-cmdline"],
     );
     assert!(!private.contains("cmdline") && !private.contains("--type=renderer"));
-    let dump = e.json("after", &["session", "export"]);
+    let dump = e.json("after", &["sessions", "export"]);
     assert_eq!(dump["snapshots"][1]["meminfo"]["HugePages_Total"], 2);
     assert_eq!(
         dump["snapshots"][1]["cgroups"][3]["memory_current"],
@@ -77,7 +77,7 @@ fn reports_and_export() {
     let quiet = Env::new("quiet");
     quiet.ok("before", &["new", "q", "--no-cmdline"]);
     assert_eq!(
-        quiet.json("before", &["session", "export"])["snapshots"][0]["processes"][1]["cmdline"],
+        quiet.json("before", &["sessions", "export"])["snapshots"][0]["processes"][1]["cmdline"],
         Value::Null
     );
 }

@@ -8,17 +8,17 @@ moments you choose and shows what changed between them.
 | Question | Command | Example |
 |---|---|---|
 | What is using the machine right now? | `psm info` | [info](#psm-info-n) |
-| Which application uses the most memory, helpers included? | `psm list --group app` | [grouping](#grouping) |
+| Which application uses the most memory, helpers included? | `psm procs --group app` | [grouping](#grouping) |
 | What changed since I started? | `psm diff` | [a typical session](#a-typical-session) |
 | What changed since my last snapshot? | `psm diff prev` | [comparing](#comparing) |
 | Who moved memory the most? | `psm diff --memory` | [memory impact](#memory-impact) |
 | Memory went down but no process grew. Where did it go? | `psm report meminfo` | [reports](#reports) |
-| What is this process, and where does it come from? | `psm list --name X --group exe` (then `parent`, `cmdline`) | [example](#what-is-this-process-and-where-does-it-come-from) |
+| What is this process, and where does it come from? | `psm procs --name X --group exe` (then `parent`, `cmdline`) | [example](#what-is-this-process-and-where-does-it-come-from) |
 | Which part of it grew? | `psm diff --name X --group parent --memory` | [example](#which-part-of-it-grew) |
 | How did one application change? | `psm diff --name X --memory` | [example](#how-did-one-application-change) |
 | Is it still growing? | `psm report timeline --name X` | [example](#is-it-still-growing) |
-| Which of its processes is busy right now? | `psm list --name X --sort cpu --top 3` | [example](#which-of-its-processes-is-busy-right-now) |
-| Did the new version use more memory? | `psm compare old new --name X` | [example](#did-the-new-version-use-more-memory) |
+| Which of its processes is busy right now? | `psm procs --name X --sort cpu --top 3` | [example](#which-of-its-processes-is-busy-right-now) |
+| Did the new version use more memory? | `psm sessions compare old new --name X` | [example](#did-the-new-version-use-more-memory) |
 
 `X` is any part of a process name, for example `chrome`.
 
@@ -47,7 +47,7 @@ the same list at the command line.
 **Session.** A named experiment, for example `chrome-update`. It holds
 snapshots. One session is *active*: `psm snap` adds to it and
 `psm diff` compares it with the live state. Every other session is
-*inactive*: kept, readable, and one `psm switch` away from being active
+*inactive*: kept, and one `psm sessions activate <name>` away from being active
 again. Starting a new session makes the previous one inactive.
 
 **Snapshot.** Every process at one moment, plus system memory figures.
@@ -61,11 +61,11 @@ The first snapshot of a session is labelled `baseline`.
 | `latest` | newest snapshot of the session |
 | `prev` | the snapshot before the one it is compared with |
 | `now` | the live state; collected for the command, never stored |
-| `105` | a snapshot id (see `psm snapshots`) |
+| `2` | a snapshot number within the session: `0` is the baseline, then `1`, `2`, ... (see `psm snapshots`) |
 | `after-update` | a label; the newest snapshot carrying it |
 
 `baseline`, `latest`, `prev` and `now` cannot be used as labels. A
-number is tried as an id before it is tried as a label.
+number is tried as a snapshot number before it is tried as a label.
 
 ## A typical session
 
@@ -97,7 +97,7 @@ psm diff prev                 # what changed since that snapshot
 `psm diff` against the fixture data used by the tests:
 
 ```text
-DIFF   #1 baseline -> now
+DIFF   #0 baseline -> now
 Processes: 5 -> 5    new 2, gone 2, restarted 1
 
 NEW PROCESSES
@@ -114,7 +114,7 @@ RESTARTED PROCESSES
 OLD PID  NEW PID   BEFORE    AFTER     DELTA  PROCESS
     300      310  812 MiB  344 MiB  -468 MiB  rust-analyzer
 
-MEMORY IMPACT   #1 baseline -> now   (RSS + swap)
+MEMORY IMPACT   #0 baseline -> now   (RSS + swap)
 PROCESS        PID  STATUS       BEFORE     AFTER     DELTA
 rust-analyzer  310  restarted   812 MiB   344 MiB  -468 MiB
 code           100  running    1000 MiB  1.37 GiB  +400 MiB
@@ -131,7 +131,7 @@ node             0      1     +1
 alpha            1      0     -1
 old-helper       1      0     -1
 
-TOP 5 MEMORY IMPACT   #1 baseline -> now
+TOP 5 MEMORY IMPACT   #0 baseline -> now
 
 By process   (RSS + swap)
 PROCESS        PID  STATUS       BEFORE     AFTER     DELTA
@@ -166,14 +166,14 @@ program, and `psm` tells instances apart by PID plus start time.
 These read the machine as it is now. They need no session and never
 touch the database.
 
-### `psm list`
+### `psm procs`
 
 ```bash
-psm list                          # every process, largest memory first
-psm list --sort cpu --top 10
-psm list --group name             # one row per program
-psm list --group cgroup           # one row per application (systemd)
-psm list --user "$USER" --name chrome
+psm procs                          # every process, largest memory first
+psm procs --sort cpu --top 10
+psm procs --group name             # one row per program
+psm procs --group cgroup           # one row per application (systemd)
+psm procs --user "$USER" --name chrome
 ```
 
 ```text
@@ -258,11 +258,9 @@ psm diff [a] [b]
 | `psm diff prev` or `psm diff latest` | last snapshot -> now |
 | `psm diff baseline latest` | first snapshot -> last snapshot |
 | `psm diff prev latest` | the last two snapshots |
-| `psm diff 101 105` | two snapshots by id |
+| `psm diff 0 2` | two snapshots by number; `0` is the baseline |
 
-With no target, the target is `now`. For an inactive session
-(`--session <name>`) the default target is `latest` instead, because
-that session is not the one being worked on.
+With no target, the target is `now`.
 
 Without section flags you get everything: summary, new, gone,
 restarted, memory impact, the programs whose process count changed, and
@@ -293,7 +291,7 @@ absolute change first:
 Grouped by application:
 
 ```text
-MEMORY IMPACT   #1 baseline -> #2 after-upgrade   (cgroup memory.current + swap)
+MEMORY IMPACT   #0 baseline -> #1 after-upgrade   (cgroup memory.current + swap)
 CGROUP          #BEFORE  #AFTER    BEFORE     AFTER     DELTA
 app-code.scope        1       1  1.17 GiB  1.66 GiB  +500 MiB
 session.scope         3       3   900 MiB   500 MiB  -400 MiB
@@ -327,7 +325,7 @@ References and defaults are the same as for `diff`.
 down, but no process grew (tmpfs, page cache, kernel slab).
 
 ```text
-MEMINFO   #1 baseline -> #2 after-upgrade
+MEMINFO   #0 baseline -> #1 after-upgrade
 FIELD               BEFORE      AFTER     DELTA
 MemAvailable     11.44 GiB  10.49 GiB  -977 MiB
 Shmem               98 MiB    586 MiB  +488 MiB
@@ -343,8 +341,8 @@ psm report timeline --name code
 
 ```text
 ID  LABEL          TIME                 PROCS      USED    SWAP  MATCHED RSS+SWAP
- 1  baseline       2026-09-30 09:12:31      1  4.56 GiB     0 B          1000 MiB
- 2  after-upgrade  2026-09-30 09:12:31      1  5.51 GiB  10 MiB          1.37 GiB
+ 0  baseline       2026-09-30 09:12:31      1  4.56 GiB     0 B          1000 MiB
+ 1  after-upgrade  2026-09-30 09:12:31      1  5.51 GiB  10 MiB          1.37 GiB
 ```
 
 `report cpu` counts processes still present in the second snapshot; a
@@ -369,7 +367,7 @@ name says nothing. Group the same processes three ways.
 Which binary is it?
 
 ```bash
-psm list --name MainThread --group exe
+psm procs --name MainThread --group exe
 ```
 
 ```text
@@ -381,7 +379,7 @@ It is Node.js, which names its main thread `MainThread`. Who started
 the 26 of them?
 
 ```bash
-psm list --name MainThread --group parent
+psm procs --name MainThread --group parent
 ```
 
 ```text
@@ -398,7 +396,7 @@ direct parent. To roll every process up to the application at the top
 of its chain:
 
 ```bash
-psm list --name MainThread --group app
+psm procs --name MainThread --group app
 ```
 
 ```text
@@ -411,7 +409,7 @@ just            1   0.1   0.4   563 MiB   47
 `just`. Which scripts are they running?
 
 ```bash
-psm list --name MainThread --group cmdline --top 4
+psm procs --name MainThread --group cmdline --top 4
 ```
 
 ```text
@@ -436,7 +434,7 @@ psm diff --name MainThread --group parent --memory
 ```
 
 ```text
-MEMORY IMPACT   #1 baseline -> now   (RSS + swap)
+MEMORY IMPACT   #0 baseline -> now   (RSS + swap)
 PARENT           #BEFORE  #AFTER    BEFORE     AFTER     DELTA
 4033 zed-editor       12      19  1.10 GiB  1.86 GiB  +778 MiB
 4038 MainThread        2       4   749 MiB  1.49 GiB  +777 MiB
@@ -454,7 +452,7 @@ psm diff --name chrome --memory
 ```
 
 ```text
-MEMORY IMPACT   #1 baseline -> now   (RSS + swap)
+MEMORY IMPACT   #0 baseline -> now   (RSS + swap)
 PROCESS      PID  STATUS     BEFORE     AFTER     DELTA
 chrome   4042574  running   361 MiB   634 MiB  +273 MiB
 chrome    240568  new             -   188 MiB  +188 MiB
@@ -487,9 +485,9 @@ psm report timeline --name chrome
 
 ```text
 ID  LABEL         TIME                 PROCS       USED    SWAP  MATCHED RSS+SWAP
- 1  baseline      2026-09-30 09:12:31     40  15.04 GiB     0 B         10.11 GiB
- 2  after-update  2026-09-30 09:40:02     42  15.61 GiB     0 B         10.31 GiB
- 3  after-1-hour  2026-09-30 10:41:17     47  16.92 GiB  12 MiB         11.48 GiB
+ 0  baseline      2026-09-30 09:12:31     40  15.04 GiB     0 B         10.11 GiB
+ 1  after-update  2026-09-30 09:40:02     42  15.61 GiB     0 B         10.31 GiB
+ 2  after-1-hour  2026-09-30 10:41:17     47  16.92 GiB  12 MiB         11.48 GiB
 ```
 
 `PROCS` counts the matching processes; `USED` and `SWAP` are the whole
@@ -499,7 +497,7 @@ what a leak looks like.
 ### Which of its processes is busy right now?
 
 ```bash
-psm list --name chrome --sort cpu --top 3
+psm procs --name chrome --sort cpu --top 3
 ```
 
 ```text
@@ -514,7 +512,7 @@ psm list --name chrome --sort cpu --top 3
 Two sessions, one per version, narrowed to the application:
 
 ```bash
-psm compare chrome-153 chrome-154 --name chrome
+psm sessions compare chrome-153 chrome-154 --name chrome
 ```
 
 ```text
@@ -541,7 +539,7 @@ chrome        26      29  3.41 GiB  3.80 GiB  +399 MiB
 | the result for a script | `--json` |
 
 ```bash
-psm list --name chrome --exclude-regex '^chrome_crashpad' --user "$USER"
+psm procs --name chrome --exclude-regex '^chrome_crashpad' --user "$USER"
 psm diff --name node --group cmdline --memory --json
 ```
 
@@ -556,27 +554,35 @@ pattern (`^chrome_crashpad`) to match the name only.
 | Command | Effect |
 |---|---|
 | `psm` / `psm status` | summary of the active session |
-| `psm sessions` | all sessions, with their state: active or inactive |
-| `psm switch <name\|id>` | make another session the active one; the current one becomes inactive |
-| `psm snapshots` | snapshots of the session |
-| `psm show [ref]` | one snapshot, with the same view and options as `list`; default `latest` |
-| `psm compare <a> <b>` | two sessions, by program, using the latest snapshot of each |
-| `psm session export --format json\|csv` | dump a session; `--all` dumps every session (JSON); `--no-cmdline` leaves command lines out |
-| `psm session import <file>` | load a JSON dump (one session or `--all`) as new, inactive sessions; `--name` renames a single one |
-| `psm session deactivate` | make the active session inactive, leaving none active; nothing is deleted |
-| `psm purge --older-than 180d` | delete inactive sessions created before that; never the active one |
-| `psm session delete <name\|id>` | delete one session and its snapshots |
+| `psm sessions` | all sessions, with their state: active or inactive (also `psm sessions list`) |
+| `psm sessions activate <name\|id>` / `psm sessions deactivate` | make another session the active one; the current one becomes inactive / leave none active |
+| `psm list` / `psm snapshots` | snapshots of the session (also `psm snapshots list`); the last row, `>` `now`, is the live state |
+| `psm procs show [ref]` | the processes of one stored snapshot (`procs` shows the live ones); same options; default `latest` |
+| `psm sessions compare <a> <b>` | two sessions, by program, using the latest snapshot of each |
+| `psm sessions export --format json\|csv` | dump a session; `--all` dumps every session (JSON); `--no-cmdline` leaves command lines out |
+| `psm sessions import <file>` | load a JSON dump (one session or `--all`) as new, inactive sessions; `--name` renames a single one |
+| `psm export [ref] --format json\|csv` | dump one snapshot, default `latest`; `--all` dumps the whole active session (same as `psm sessions export`) |
+| `psm import <file>` | add every snapshot of an export file to the active session; labels and timestamps are kept |
+| `psm sessions deactivate` | make the active session inactive, leaving none active; nothing is deleted |
+| `psm sessions purge --older-than 180d` | delete inactive sessions created before that; never the active one |
+| `psm snapshots reset` | start the active session over: all its snapshots go, the live state is the new baseline; asks first |
+| `psm sessions delete <name\|id>` | delete one session and its snapshots |
+| `psm snapshots delete [ref]` | delete one snapshot, default `latest`; the others keep their numbers. The last one is replaced by a fresh baseline |
 | `psm backup <path>` | consistent copy of the database; refuses to overwrite |
-| `psm reset` | delete **everything**: all sessions and snapshots; asks first |
+| `psm sessions reset` | delete **everything**: all sessions and snapshots; asks first |
 | `psm faq [words]` | this guide's quick-answers table, at the command line; words filter it |
-| `psm init` | first-time setup: creates the config file and database if missing, installs shell completions; safe to repeat |
-| `psm config` | show which config file is used; `--init` creates it with the defaults |
+| `psm init` | first-time setup: creates the config file and database if missing, installs shell completions; safe to repeat. `psm init force` deletes both and starts from scratch (asks first) |
+| `psm config` / `psm --config` | show which config file is used; `--init` creates it with the defaults |
 | `psm completions <shell>` | print a shell completion script; see [Tab completion](#tab-completion) |
 
-Commands that act on a whole session are grouped under `psm session`:
-`export`, `import`, `deactivate` and `delete`. `psm session --help`
-lists them. Listing (`psm sessions`) and switching (`psm switch`) stay
-at the top level because they are typed often.
+The daily loop is top level: `new`, `snap`, `diff`, `report`, `status`,
+`procs`, `info`, plus `export`/`import` for moving snapshots around.
+Everything else about sessions is under `psm sessions`: `list` (the
+default), `activate`, `deactivate`, `compare`, `export`, `import`,
+`delete`, `purge` and `reset` (the whole database). `psm snapshots`
+lists the session's snapshots (`list`, the default) and holds `delete`
+and `reset` (the session starts over). `--help` on any group lists its
+commands.
 
 ### Switching sessions
 
@@ -591,7 +597,7 @@ ID  NAME        CREATED              SNAPS  STATE
 ```
 
 ```bash
-psm switch chrome-153     # by name, or `psm switch 1` by id
+psm sessions activate chrome-153   # by name, or `psm sessions activate 1` by id
 ```
 
 ```text
@@ -603,35 +609,49 @@ From then on `psm snap` adds to `chrome-153` and `psm diff` compares
 its baseline with the live state. Switching deletes nothing and can be
 repeated freely.
 
-To only *look* at another session, without making it active, use
-`--session <name|id>` on a read command:
+Every command works on the active session, so to look at another one,
+switch to it (and back). `psm sessions compare` and `psm sessions export`
+take session names directly:
 
 ```bash
-psm --session chrome-153 snapshots
-psm --session chrome-153 diff
-psm compare chrome-153 chrome-154
+psm sessions compare chrome-153 chrome-154
+psm sessions export chrome-153 > old.json
 ```
-
-`new` and `snap` always work on the active session.
 
 ### Export and import
 
-Both live under `psm session`:
+Both live under `psm sessions`:
 
 ```bash
-psm session export > chrome-154.json          # the active session, as JSON
-psm session export chrome-153 > old.json      # another session, by name or id
-psm session import chrome-153.json                    # on another machine or database
-psm session import chrome-153.json --name chrome-old  # when the name is already taken
-psm session export | psm --db other.db session import -       # `-` reads standard input
-psm session export --all > all.json           # every session in one file
-psm session import all.json                   # ... and back, all at once
+psm sessions export > chrome-154.json          # the active session, as JSON
+psm sessions export chrome-153 > old.json      # another session, by name or id
+psm sessions import chrome-153.json                    # on another machine or database
+psm sessions import chrome-153.json --name chrome-old  # when the name is already taken
+psm sessions export | psm --db other.db session import -       # `-` reads standard input
+psm sessions export --all > all.json           # every session in one file
+psm sessions import all.json                   # ... and back, all at once
 ```
 
 An imported session keeps its snapshots, labels and original
 timestamps. It arrives **inactive**, so it does not replace your active
-session: read it with `--session`, make it active with `psm switch`, or
-put it next to another session with `psm compare`. Snapshot ids are assigned anew.
+session: make it active with `psm sessions activate <name>`, or put it next to
+another session with `psm sessions compare`. Snapshot numbers start at `0`
+again.
+
+One snapshot at a time goes through `psm export` and `psm import`:
+
+```bash
+psm export > latest.json             # the newest snapshot of the active session
+psm export after-update > s.json     # by label or number
+psm import s.json                    # appended to the active session
+psm sessions activate old; psm import s.json  # ... or to another one
+```
+
+The file is the session export format with one snapshot, so `psm
+sessions import` also accepts it (as a session of its own) and `psm
+import` also accepts a whole session export (every snapshot in it is
+appended). An imported baseline arrives as a plain snapshot: the
+session keeps the baseline it has.
 
 Only the JSON export can be imported. CSV is one row per process, for
 spreadsheets, and leaves out the system figures.
@@ -639,37 +659,39 @@ spreadsheets, and leaves out the system figures.
 An export made with `--no-cmdline` imports without command lines.
 
 `--all` writes every session, active and inactive, into one JSON file.
-`psm session import` recognises that file and loads all of them in one
+`psm sessions import` recognises that file and loads all of them in one
 transaction: if any name already exists, nothing is imported. `--name`
 only applies to a single-session file. `--all` is JSON only; the CSV
 format has no session column.
 
 ### Deleting data
 
-Three commands delete, from narrow to total:
+Five commands delete, from narrow to total:
 
 | Command | Deletes | Asks first |
 |---|---|---|
-| `psm session delete <name\|id>` | one session | no |
-| `psm purge --older-than <age>` | inactive sessions older than that | no |
-| `psm reset` | the whole database: every session and snapshot | **yes** |
+| `psm snapshots delete [ref]` | one snapshot, default the latest; the last one is replaced by a fresh baseline | no |
+| `psm snapshots reset` | every snapshot of the active session, which then starts over with a new baseline | **yes** |
+| `psm sessions delete <name\|id>` | one session | no |
+| `psm sessions purge --older-than <age>` | inactive sessions older than that | no |
+| `psm sessions reset` | the whole database: every session and snapshot | **yes** |
 
-`psm reset` shows what is about to go and waits for an answer:
+`psm sessions reset` shows what is about to go and waits for an answer:
 
 ```text
-$ psm reset
+$ psm sessions reset
 This permanently deletes 3 session(s) and 11 snapshot(s) in /home/alice/.local/share/psm/psm.db.
 `psm backup <path>` makes a copy first.
 Delete everything? [y/N]
 ```
 
 Only `y` or `yes` deletes. Anything else, including no answer at all in
-a script, deletes nothing. `psm reset --yes` skips the question.
+a script, deletes nothing. `psm sessions reset --yes` skips the question.
 
 The configuration file is kept. Afterwards there is no session; start
 one with `psm new`.
 
-`psm reset` also works on a database this version cannot read (written
+`psm sessions reset` also works on a database this version cannot read (written
 by a different schema version), which is the way to start over in that
 case.
 
@@ -684,13 +706,27 @@ psm faq                # common questions and the command that answers each
 psm faq memory         # only the rows mentioning memory
 psm --help             # the commands, and each global option explained with an example
 psm -h                 # the same on fewer lines
-psm diff --help        # options of one command, each value explained, examples
-psm diff -h            # the same on fewer lines
+psm diff --help   # options of one command, each value explained, examples
+psm diff -h       # the same on fewer lines
+psm help snapshots diff     # the same as psm diff --help; psm help session export for a subcommand
+psm version                 # name, version, build date and commit; also psm -v, psm --version
 ```
 
-Global options (`--config`, `--db`, `--session`, `--kernel`, `--json`,
-`--proc-root`) work with every command and can go before or after it:
-`psm --session old diff` and `psm diff --session old` are the same.
+`help`, `-h` and `--help` are one command: `psm -h snapshots diff` is
+`psm help snapshots diff` on fewer lines.
+
+Global options (`--config`, `--db`, `--kernel`, `--json`, `--proc-root`)
+work with every command and can go before or after it: `psm --json diff`
+and `psm diff --json` are the same. They are listed by `psm -h`; a
+command's own help lists only its options.
+
+Every command except `config` (its name is taken by the global option)
+also works as a flag: `psm --snap` and `psm -s` are `psm snap`, options
+follow as usual (`psm -p --top 10`, `psm -d prev --memory`). `psm -h`
+shows each command with its letter (`snap, -s`): `-p` procs, `-i` info,
+`-n` new, `-s` snap, `-l` list, `-d` diff, `-b` backup, `-f` faq, `-h`
+help, `-v` version; `psm <command> -h` shows a group's own letters: `-l` for every
+`list` and `-r` for `snapshots reset`.
 
 ### Tab completion
 
@@ -711,8 +747,8 @@ psm completions fish > ~/.config/fish/completions/psm.fish
 
 ```text
 psm di<Tab>              diff
-psm session <Tab>        new  export  import  deactivate  delete
-psm list --group <Tab>   name  exe  cmdline  app  user  cgroup  parent  pid
+psm sessions <Tab>       list  purge  compare  export  import  delete
+psm procs --group <Tab>   name  exe  cmdline  app  user  cgroup  parent  pid
 ```
 
 Session names and snapshot labels are not completed: they live in the
@@ -784,9 +820,8 @@ Global options, accepted everywhere:
 
 | Option | Effect |
 |---|---|
-| `--config <path>` | configuration file; also `PSM_CONFIG` |
-| `--db <path>` | database file; also `PSM_DB` |
-| `--session <name\|id>` | use a session other than the active one |
+| `--config [path]` | configuration file; also `PSM_CONFIG`. Alone, with no command: same as `psm config` |
+| `--db [path]` | database file; also `PSM_DB`. Alone, with no command: shows the database in use |
 | `--kernel` | include kernel threads |
 | `--json` | machine-readable output |
 | `--proc-root <dir>` | read process data from a directory instead of `/proc` (tests) |
@@ -839,7 +874,7 @@ stored in snapshots either way.
 - Text tables by default.
 - `--json` on any command. Byte values are raw numbers.
 - `--csv` on `list` and `show`.
-- `psm session export` for a whole session.
+- `psm sessions export` for a whole session.
 
 ```bash
 psm diff --memory --top 1 --json
@@ -847,7 +882,7 @@ psm diff --memory --top 1 --json
 
 ```json
 {
-  "from": { "id": 1, "label": "baseline" },
+  "from": { "id": 0, "label": "baseline" },
   "memory": [
     {
       "after": 360710144,
@@ -918,7 +953,7 @@ configuration file, built-in default.
 
 Boolean flags take an explicit value with `=`, so a flag can switch off
 what the file switched on: `psm snap --deep=false`,
-`psm list --kernel=false`.
+`psm procs --kernel=false`.
 
 The database is `~/.local/share/psm/psm.db`
 (`$XDG_DATA_HOME/psm/psm.db`), created with mode `0600`.
@@ -956,7 +991,7 @@ path is not readable.
   `--group cgroup` cannot separate them.
 - There are no schema migrations. A database written by a different
   schema version is refused with a message, not converted. Keep its
-  data with the old binary's `psm session export`, then `psm reset` and
-  `psm session import`.
+  data with the old binary's `psm sessions export`, then `psm sessions reset` and
+  `psm sessions import`.
 - Not implemented: `watch`, notes, tags, thresholds (`--fail-if-*`),
   HTML reports.

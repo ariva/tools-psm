@@ -13,12 +13,13 @@ use std::collections::HashMap;
 use std::path::PathBuf;
 use std::time::Instant;
 
-use anyhow::{Context, Result, bail};
-use clap::CommandFactory;
+use anyhow::{Context, Result};
 use regex::Regex;
 
 use crate::analysis::view::{self, View};
-use crate::cli::{CaptureArgs, Cli, Cmd, FilterArgs, SessionCmd, ViewArgs};
+use crate::cli::{
+    CaptureArgs, Cli, Cmd, FilterArgs, ProcsCmd, SessionsCmd, SnapshotsCmd, ViewArgs,
+};
 use crate::collect::procfs as collector;
 use crate::config::{self, Config};
 use crate::model::{Filter, Snapshot};
@@ -32,7 +33,6 @@ pub struct Ctx {
     pub kernel: bool,
     pub proc_root: PathBuf,
     pub db_path: Option<PathBuf>,
-    pub session: Option<String>,
     /// No `--config` / `PSM_CONFIG`: the default location is in use.
     pub default_config: bool,
 }
@@ -144,13 +144,6 @@ impl Ctx {
             out(table.render());
         }
     }
-
-    pub fn writes_active_session(&self, command: &str) -> Result<()> {
-        if self.session.is_some() {
-            bail!("`psm {command}` always works on the active session; drop --session");
-        }
-        Ok(())
-    }
 }
 
 /// `288 processes (+302 kernel)`
@@ -171,10 +164,121 @@ pub fn note_restricted(restricted: usize, s: &Snapshot) {
     }
 }
 
+/// `psm help [command...]`, `-h`, `--help`: clap's help, brief for `-h`.
+fn help(path: &[String]) -> Result<()> {
+    let mut root = crate::cli::command();
+    root.build();
+    let cmd = path.iter().try_fold(&mut root, |c, name| {
+        c.find_subcommand_mut(name)
+            .with_context(|| format!("unknown command `{name}`; `psm help` lists them"))
+    })?;
+    // The subcommand carries the words, so the flag itself is only in argv.
+    let brief = std::env::args().skip(1).any(|a| a == "-h");
+    let text = if brief {
+        cmd.render_help()
+    } else {
+        cmd.render_long_help()
+    }
+    .to_string();
+    // The top-level list is regrouped; a command's own help is clap's as is.
+    let text = if path.is_empty() {
+        let shorts: Vec<(String, char)> = root
+            .get_subcommands()
+            .filter_map(|sc| sc.get_short_flag().map(|s| (sc.get_name().to_string(), s)))
+            .collect();
+        grouped_commands(&text, &shorts)
+    } else {
+        text
+    };
+    // clap's rendering ends with a newline and `out` adds one: keep one.
+    out(text.trim_end_matches('\n'));
+    Ok(())
+}
+
+/// The top-level command list, in groups, as `name, -x`: the long flag forms
+/// (`snap, -s, --snap`) double the width and read like options.
+const COMMAND_GROUPS: &[(&str, &[&str])] = &[
+    (
+        "Commands:",
+        &[
+            "procs", "info", "new", "snap", "list", "diff", "report", "status",
+        ],
+    ),
+    (
+        "Sessions and snapshots:",
+        &["sessions", "snapshots", "export", "import"],
+    ),
+    ("Setup:", &["init", "config", "backup", "completions"]),
+    ("Help:", &["faq", "help", "version"]),
+];
+
+fn grouped_commands(help: &str, shorts: &[(String, char)]) -> String {
+    let Some(start) = help.find("Commands:\n") else {
+        return help.to_string();
+    };
+    let body = &help[start + "Commands:\n".len()..];
+    let end = body.find("\n\n").unwrap_or(body.len());
+    let rows = &body[..end];
+    // `  name, -x, --name   about` -> (name, about)
+    let mut about: Vec<(String, String)> = Vec::new();
+    for line in rows.lines() {
+        let Some(rest) = line.strip_prefix("  ") else {
+            continue;
+        };
+        let name_end = rest.find([',', ' ']).unwrap_or(rest.len());
+        let name = &rest[..name_end];
+        let desc = rest[name_end..]
+            .split("  ")
+            .skip(1)
+            .map(str::trim)
+            .find(|s| !s.is_empty())
+            .unwrap_or_default();
+        about.push((name.to_string(), desc.to_string()));
+    }
+    // `snap, -s` when the command has a letter, else just the name.
+    let label = |name: &str| match shorts.iter().find(|(n, _)| n == name) {
+        Some((_, s)) => format!("{name}, -{s}"),
+        None => name.to_string(),
+    };
+    let width = about.iter().map(|(n, _)| label(n).len()).max().unwrap_or(0);
+    let mut block = String::new();
+    let mut placed = Vec::new();
+    for (heading, names) in COMMAND_GROUPS {
+        let mut rows = String::new();
+        for name in names.iter() {
+            if let Some((n, d)) = about.iter().find(|(n, _)| n == name) {
+                rows.push_str(&format!("  {:<width$}  {d}\n", label(n)));
+                placed.push(n.clone());
+            }
+        }
+        if !rows.is_empty() {
+            block.push_str(&format!("{heading}\n{rows}\n"));
+        }
+    }
+    // Anything new that is not in a group yet still shows up.
+    let rest: String = about
+        .iter()
+        .filter(|(n, _)| !placed.contains(n))
+        .map(|(n, d)| format!("  {:<width$}  {d}\n", label(n)))
+        .collect();
+    if !rest.is_empty() {
+        block.push_str(&format!("Other:\n{rest}\n"));
+    }
+    format!(
+        "{}{}{}",
+        &help[..start],
+        block.trim_end_matches('\n'),
+        &body[end..]
+    )
+}
+
 pub fn run(cli: Cli) -> Result<()> {
     // Handled before loading the configuration: these must work without one.
+    if cli.bare_config() {
+        return setup::config(cli.config_path().as_deref(), false);
+    }
     if let Some(Cmd::Config { init }) = &cli.cmd {
-        return setup::config(cli.config.as_deref(), *init);
+        return setup::config(cli.config_path().as_deref(), *init);
     }
     if let Some(Cmd::Init { .. }) = &cli.cmd {
         return setup::init(&cli);
@@ -183,25 +287,49 @@ pub fn run(cli: Cli) -> Result<()> {
         faq::faq(words, cli.json);
         return Ok(());
     }
-    if let Some(Cmd::Completions { shell }) = cli.cmd {
-        clap_complete::generate(shell, &mut Cli::command(), "psm", &mut std::io::stdout());
+    if let Some(Cmd::Help { command }) = &cli.cmd {
+        return help(command);
+    }
+    if let Some(Cmd::Version) = &cli.cmd {
+        out(crate::cli::commands::version());
         return Ok(());
     }
-    let default_config = cli.config.is_none();
-    let cfg = config::load(cli.config.as_deref())?;
+    if let Some(Cmd::Completions { shell }) = cli.cmd {
+        crate::output::out(crate::cli::completions::script(shell));
+        return Ok(());
+    }
+    let config_path = cli.config_path();
+    let db_flag = cli.db_flag();
+    let bare_db = cli.bare_db();
+    let default_config = config_path.is_none();
+    let cfg = config::load(config_path.as_deref())?;
     crate::output::set_units(&cfg.display.units)?;
     let ctx = Ctx {
         json: cli.json,
         kernel: cli.kernel.unwrap_or(cfg.display.kernel),
         proc_root: cli.proc_root,
-        db_path: cli.db,
-        session: cli.session,
+        db_path: db_flag,
         default_config,
         cfg,
     };
 
+    if bare_db {
+        return setup::database(&ctx);
+    }
     match cli.cmd.unwrap_or(Cmd::Status) {
-        Cmd::List { view, interval } => views::list(&ctx, &view, &interval),
+        Cmd::Procs {
+            view,
+            interval,
+            cmd: None,
+        }
+        | Cmd::Procs {
+            cmd: Some(ProcsCmd::List { view, interval }),
+            ..
+        } => views::list(&ctx, &view, &interval),
+        Cmd::Procs {
+            cmd: Some(ProcsCmd::Show { snapshot, view }),
+            ..
+        } => views::show(&ctx, &snapshot, &view),
         Cmd::Info {
             n,
             by,
@@ -210,39 +338,71 @@ pub fn run(cli: Cli) -> Result<()> {
             deep,
             filter,
         } => views::info(&ctx, n, &by, &group, &interval, deep, &filter),
-        Cmd::Show { snapshot, view } => views::show(&ctx, &snapshot, &view),
         Cmd::New { name, capture } => capture::new_session(&ctx, name, &capture),
         Cmd::Snap { label, capture } => capture::snap(&ctx, label, &capture),
         Cmd::Status => sessions::status(&ctx),
-        Cmd::Diff(args) => compare::diff(&ctx, &args),
+        Cmd::List => sessions::snapshots(&ctx),
         Cmd::Report { kind, diff: args } => compare::report(&ctx, kind, &args),
-        Cmd::Compare {
-            a,
-            b,
-            group,
-            metric,
-            top,
-            filter,
-        } => compare::sessions(&ctx, &a, &b, group, metric, top, filter),
-        Cmd::Snapshots => sessions::snapshots(&ctx),
-        Cmd::Sessions => sessions::sessions(&ctx),
-        Cmd::Switch { session } => sessions::switch(&ctx, &session),
-        Cmd::Session { cmd } => match cmd {
-            SessionCmd::New { name, capture } => capture::new_session(&ctx, name, &capture),
-            SessionCmd::Export {
+        Cmd::Sessions { cmd: None }
+        | Cmd::Sessions {
+            cmd: Some(SessionsCmd::List),
+        } => sessions::sessions(&ctx),
+        Cmd::Sessions {
+            cmd: Some(SessionsCmd::Purge { older_than }),
+        } => maintenance::purge(&ctx, &older_than),
+        Cmd::Sessions { cmd: Some(cmd) } => match cmd {
+            SessionsCmd::Activate { session } => sessions::switch(&ctx, &session),
+            SessionsCmd::Deactivate => sessions::deactivate(&ctx),
+            SessionsCmd::Compare {
+                a,
+                b,
+                group,
+                metric,
+                top,
+                filter,
+            } => compare::sessions(&ctx, &a, &b, group, metric, top, filter),
+            SessionsCmd::Export {
                 session,
                 all,
                 format,
                 no_cmdline,
             } => sessions::export(&ctx, session, all, format, no_cmdline),
-            SessionCmd::Import { file, name } => sessions::import(&ctx, &file, name),
-            SessionCmd::Deactivate => sessions::deactivate(&ctx),
-            SessionCmd::Delete { session } => sessions::delete(&ctx, &session),
+            SessionsCmd::Import { file, name } => sessions::import(&ctx, &file, name),
+            SessionsCmd::Delete { session } => sessions::delete(&ctx, &session),
+            SessionsCmd::Reset { yes } => maintenance::reset(&ctx, yes),
+            SessionsCmd::List | SessionsCmd::Purge { .. } => unreachable!("matched above"),
         },
-        Cmd::Purge { older_than } => maintenance::purge(&ctx, &older_than),
+        Cmd::Snapshots { cmd: None }
+        | Cmd::Snapshots {
+            cmd: Some(SnapshotsCmd::List),
+        } => sessions::snapshots(&ctx),
+        Cmd::Snapshots {
+            cmd: Some(SnapshotsCmd::Delete { snapshot }),
+        } => sessions::delete_snapshot(&ctx, snapshot.as_deref()),
+        Cmd::Snapshots {
+            cmd: Some(SnapshotsCmd::Reset { yes, capture }),
+        } => maintenance::purge_session(&ctx, yes, &capture),
+        Cmd::Diff(args) => compare::diff(&ctx, &args),
+        Cmd::Export {
+            all: true,
+            format,
+            no_cmdline,
+            ..
+        } => sessions::export(&ctx, None, false, format, no_cmdline),
+        Cmd::Export {
+            snapshot,
+            format,
+            no_cmdline,
+            ..
+        } => sessions::export_snapshot(&ctx, snapshot, format, no_cmdline),
+        Cmd::Import { file } => sessions::import_snapshots(&ctx, &file),
         Cmd::Backup { path } => maintenance::backup(&ctx, &path),
-        Cmd::Reset { yes } => maintenance::reset(&ctx, yes),
-        Cmd::Config { .. } | Cmd::Completions { .. } | Cmd::Init { .. } | Cmd::Faq { .. } => {
+        Cmd::Config { .. }
+        | Cmd::Completions { .. }
+        | Cmd::Init { .. }
+        | Cmd::Faq { .. }
+        | Cmd::Help { .. }
+        | Cmd::Version => {
             unreachable!("handled before the configuration is loaded")
         }
     }

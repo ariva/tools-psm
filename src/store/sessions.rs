@@ -3,11 +3,33 @@
 use std::time::Duration;
 
 use anyhow::{Context, Result, bail};
-use rusqlite::{OptionalExtension, params};
+use rusqlite::{Connection, OptionalExtension, params};
 
 use super::snapshots::insert_snapshot;
 use super::{Db, NOW, SESSION_SQL, Session, session_row};
 use crate::model::Snapshot;
+
+/// All snapshots of a session with their rows; the session row stays.
+fn delete_snapshots_of(conn: &Connection, session_id: i64) -> Result<()> {
+    let snaps = "SELECT id FROM snapshots WHERE session_id = ?1";
+    for table in ["processes", "snapshot_meminfo", "snapshot_cgroups"] {
+        conn.execute(
+            &format!("DELETE FROM {table} WHERE snapshot_id IN ({snaps})"),
+            [session_id],
+        )?;
+    }
+    conn.execute("DELETE FROM snapshots WHERE session_id = ?1", [session_id])?;
+    Ok(())
+}
+
+/// Timestamps from a file: keep only those SQLite can read back.
+pub(super) fn valid_timestamp(conn: &Connection, t: &str) -> Result<Option<String>> {
+    Ok(conn.query_row(
+        "SELECT CASE WHEN datetime(?1) IS NOT NULL THEN ?1 END",
+        [t],
+        |r| r.get(0),
+    )?)
+}
 
 impl Db {
     /// The one session that is not inactive (`archived_at IS NULL`).
@@ -50,7 +72,7 @@ impl Db {
     }
 
     /// Makes the active session inactive, creates a new one, and stores its baseline,
-    /// all in one transaction.
+    /// all in one transaction. Returns the session and the baseline's number (0).
     pub fn init(&self, name: Option<&str>, baseline: &Snapshot) -> Result<(Session, i64)> {
         let tx = self.conn.unchecked_transaction()?;
         let name = match name {
@@ -80,7 +102,7 @@ impl Db {
         let session_id = tx.last_insert_rowid();
         let snapshot_id = insert_snapshot(&tx, session_id, Some("baseline"), None, baseline)?;
         tx.commit()?;
-        Ok((self.session(Some(&name))?, snapshot_id))
+        Ok((self.session(Some(&name))?, self.seq(snapshot_id)?))
     }
 
     pub fn deactivate(&self, session_id: i64) -> Result<()> {
@@ -112,17 +134,25 @@ impl Db {
 
     pub fn delete_session(&self, session_id: i64) -> Result<()> {
         let tx = self.conn.unchecked_transaction()?;
-        let snaps = "SELECT id FROM snapshots WHERE session_id = ?1";
-        for table in ["processes", "snapshot_meminfo", "snapshot_cgroups"] {
-            tx.execute(
-                &format!("DELETE FROM {table} WHERE snapshot_id IN ({snaps})"),
-                [session_id],
-            )?;
-        }
-        tx.execute("DELETE FROM snapshots WHERE session_id = ?1", [session_id])?;
+        delete_snapshots_of(&tx, session_id)?;
         tx.execute("DELETE FROM sessions WHERE id = ?1", [session_id])?;
         tx.commit()?;
         Ok(())
+    }
+
+    /// `psm snapshots reset`: every snapshot of the session goes and `baseline` becomes
+    /// its new #0, in one transaction. Returns how many were deleted.
+    pub fn restart(&self, session_id: i64, baseline: &Snapshot) -> Result<i64> {
+        let tx = self.conn.unchecked_transaction()?;
+        let removed: i64 = tx.query_row(
+            "SELECT count(*) FROM snapshots WHERE session_id = ?1",
+            [session_id],
+            |r| r.get(0),
+        )?;
+        delete_snapshots_of(&tx, session_id)?;
+        insert_snapshot(&tx, session_id, Some("baseline"), None, baseline)?;
+        tx.commit()?;
+        Ok(removed)
     }
 
     /// Stores exported sessions under their names, keeping the original
@@ -142,18 +172,10 @@ impl Db {
                 );
             }
         }
-        // Timestamps come from a file: keep only those SQLite can read back.
-        let valid = |t: &str| -> Result<Option<String>> {
-            Ok(tx.query_row(
-                "SELECT CASE WHEN datetime(?1) IS NOT NULL THEN ?1 END",
-                [t],
-                |r| r.get(0),
-            )?)
-        };
         for (name, snapshots) in sessions {
             let started = snapshots
                 .first()
-                .map(|s| valid(&s.created_at))
+                .map(|s| valid_timestamp(&tx, &s.created_at))
                 .transpose()?
                 .flatten();
             tx.execute(
@@ -168,7 +190,7 @@ impl Db {
                     &tx,
                     session_id,
                     s.label.as_deref(),
-                    valid(&s.created_at)?.as_deref(),
+                    valid_timestamp(&tx, &s.created_at)?.as_deref(),
                     s,
                 )?;
             }
