@@ -70,9 +70,9 @@ fn completions_cover_commands_options_and_values() {
         assert!(bash.contains(expected), "bash script lacks {expected:?}");
     }
     // The flag forms of the commands are added by hand; bash also follows them.
-    assert!(bash.contains("--procs -p"), "{bash}");
+    assert!(bash.contains("opts=\"-p -i -n -s -d -l"), "{bash}");
     assert!(
-        bash.contains("psm,--snapshots)\n                cmd=\"psm__subcmd__snapshots\""),
+        bash.contains("psm,-s)\n                cmd=\"psm__subcmd__snap\""),
         "{bash}"
     );
     // Values that are not paths do not complete to the directory listing.
@@ -94,9 +94,9 @@ fn completions_cover_commands_options_and_values() {
         after("--user")
     );
     let zsh = e.ok("before", &["completions", "zsh"]);
-    assert!(zsh.contains("#compdef psm") && zsh.contains("'--snapshots[Snapshots of the session"));
+    assert!(zsh.contains("#compdef psm") && zsh.contains("'-s[Another snapshot"));
     let fish = e.ok("before", &["completions", "fish"]);
-    assert!(fish.contains("complete -c psm") && fish.contains("-l procs -s p -d"));
+    assert!(fish.contains("complete -c psm") && fish.contains("-s p -d"));
     assert!(
         e.fails("before", &["completions", "dos"])
             .contains("invalid value")
@@ -118,7 +118,7 @@ fn commands_have_flag_forms() {
         "Help:\n  faq, -f ",
         "\n  version, -v ",
         "\n  config ",
-        "works as a flag",
+        "work as a flag",
     ] {
         assert!(help.contains(expected), "{expected:?} in\n{help}");
     }
@@ -131,9 +131,10 @@ fn commands_have_flag_forms() {
         e.ok("before", &["-p", "--interval", "0", "--top", "2"]),
         by_name
     );
-    assert_eq!(
-        e.ok("before", &["--procs", "--interval", "0", "--top", "2"]),
-        by_name
+    assert!(
+        e.fails("before", &["--procs"])
+            .contains("unexpected argument"),
+        "double dashes are options, not commands"
     );
     assert!(e.ok("before", &["-f", "5.4"]).contains("sessions purge"));
     // procs: list is the default, show the other subcommand; both have flag forms.
@@ -148,14 +149,8 @@ fn commands_have_flag_forms() {
         e.ok("before", &["procs", "-l", "--interval", "0", "--top", "2"]),
         by_name
     );
-    assert!(
-        e.ok("before", &["procs", "-h"])
-            .contains("list, -l, --list")
-    );
-    assert!(
-        e.ok("before", &["snapshots", "-h"])
-            .contains("reset, -r, --reset")
-    );
+    assert!(e.ok("before", &["procs", "-h"]).contains("list, -l"));
+    assert!(e.ok("before", &["snapshots", "-h"]).contains("reset, -r"));
     assert!(!e.ok("before", &["sessions", "-h"]).contains("reset, -r"));
     assert!(
         e.fails("before", &["list"]).contains("no active session"),
@@ -169,7 +164,7 @@ fn commands_have_flag_forms() {
     assert_eq!(e.ok("before", &["help"]), help);
     let diff = e.ok("before", &["help", "diff"]);
     assert!(
-        diff.contains("Usage: psm {diff|--diff|-d}") && diff.contains("-h, --help"),
+        diff.contains("Usage: psm {diff|-d}") && diff.contains("-h, --help"),
         "{diff}"
     );
     assert_eq!(e.ok("before", &["diff", "--help"]), diff);

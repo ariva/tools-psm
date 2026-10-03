@@ -1,14 +1,13 @@
-//! Shell completion scripts: clap_complete's output plus the flag forms of
-//! the commands (`--snapshot`, `-l`), which clap_complete leaves out of its
-//! static scripts. bash gets both the words and what follows them
-//! (`psm --snapshot <TAB>` lists the snapshot commands); zsh and fish get
-//! the words.
+//! Shell completion scripts: clap_complete's output plus the letter forms of
+//! the commands (`-s`, `-l`), which clap_complete leaves out of its static
+//! scripts. bash gets both the letters and what follows them
+//! (`psm -s <TAB>` completes snap's options); zsh and fish get the letters.
 
 use std::fmt::Write as _;
 
 use clap_complete::Shell;
 
-/// A command's name, its flag forms (`--list`, `-l`) and its one-line help.
+/// A command's name, its flag forms (`-l`; `--help`/`--version` for those two) and its one-line help.
 struct Flagged {
     name: String,
     forms: Vec<String>,

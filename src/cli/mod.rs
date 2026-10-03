@@ -39,8 +39,8 @@ const HELP_TEMPLATE: &str = concat!(
     disable_help_subcommand = true,
     after_help = "\
 Run without a command to see the active session.
-Every command except config also works as a flag: `psm --snap`, `psm -s`.
-`psm <command> -h` lists its own commands.
+Commands with a letter also work as a flag: `psm -s` is `psm snap`.
+`psm <command> -h` lists its own commands. Double dashes are options.
 Global options work with every command and can go before or after it;
 only this help lists them. `psm --help` explains each of them with an example.
 `psm <command> --help` explains the options and values of one command."

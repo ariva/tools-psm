@@ -720,13 +720,14 @@ work with every command and can go before or after it: `psm --json diff`
 and `psm diff --json` are the same. They are listed by `psm -h`; a
 command's own help lists only its options.
 
-Every command except `config` (its name is taken by the global option)
-also works as a flag: `psm --snap` and `psm -s` are `psm snap`, options
-follow as usual (`psm -p --top 10`, `psm -d prev --memory`). `psm -h`
-shows each command with its letter (`snap, -s`): `-p` procs, `-i` info,
-`-n` new, `-s` snap, `-l` list, `-d` diff, `-b` backup, `-f` faq, `-h`
-help, `-v` version; `psm <command> -h` shows a group's own letters: `-l` for every
-`list` and `-r` for `snapshots reset`.
+Commands are words; some also have a single-dash letter, shown next to
+them in `psm -h` (`snap, -s`): `psm -s` is `psm snap`, options follow as
+usual (`psm -p --top 10`, `psm -d prev --memory`). Double dashes are
+options only; the sole exceptions are `--help` and `--version`, which
+every tool honours. Letters: `-p` procs, `-i` info, `-n` new, `-s` snap,
+`-l` list, `-d` diff, `-b` backup, `-f` faq, `-h` help, `-v` version;
+`psm <command> -h` shows a group's own letters: `-l` for every `list`
+and `-r` for `snapshots reset`.
 
 ### Tab completion
 

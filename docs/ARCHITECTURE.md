@@ -277,7 +277,7 @@ then opens the database (which creates it), then writes the completion
 script for the shell in `$SHELL` to that shell's per-user location. Its script comes from
 `clap_complete` over the same `Cli` definition as `--help`, so a new
 option or value completes without extra work. `cli/completions.rs`
-then adds the flag forms of the commands (`--snapshot`, `-l`), which
+then adds the letter forms of the commands (`-s`, `-l`), which
 clap_complete's static scripts leave out: bash gets the words and what
 follows them, zsh and fish the words. The anchors it edits are asserted
 by the completions test. `cli::command` also gives every valued

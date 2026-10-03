@@ -279,7 +279,7 @@ fn snapshot_group() {
     e.before_and_after(&[]); // #0 baseline, #1 after
     assert!(e.ok("before", &["snap", "two"]).contains("Snapshot #2 two"));
     assert!(
-        e.ok("after", &["--snap", "three"])
+        e.ok("after", &["-s", "three"])
             .contains("Snapshot #3 three")
     );
 

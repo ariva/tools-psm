@@ -47,7 +47,6 @@ pub enum Cmd {
     /// Processes: now (list, the default) or of a stored snapshot (show)
     #[command(
         short_flag = 'p',
-        long_flag = "procs",
         args_conflicts_with_subcommands = true,
         after_help = "\
 Examples:
@@ -73,7 +72,7 @@ Examples:
   psm info                  top 5 by CPU, memory and threads
   psm info 10 --by cpu,mem  top 10, two tables
   psm info --group name     rank programs instead of single processes")]
-    #[command(short_flag = 'i', long_flag = "info")]
+    #[command(short_flag = 'i')]
     Info {
         /// Rows per table
         #[arg(default_value_t = 5)]
@@ -97,7 +96,7 @@ Examples:
     ///
     /// The first time, it also creates the
     /// config file at its default location.
-    #[command(short_flag = 'n', long_flag = "new")]
+    #[command(short_flag = 'n')]
     New {
         /// Session name [default: session-YYYYMMDD-HHMMSS]
         name: Option<String>,
@@ -105,7 +104,7 @@ Examples:
         capture: CaptureArgs,
     },
     /// Another snapshot in the active session
-    #[command(short_flag = 's', long_flag = "snap")]
+    #[command(short_flag = 's')]
     Snap {
         /// Label for the snapshot (not baseline, latest, prev or now)
         label: Option<String>,
@@ -123,13 +122,12 @@ Examples:
   psm diff --memory --top 10   memory ranking only
 
 {REFERENCES}"))]
-    #[command(short_flag = 'd', long_flag = "diff")]
+    #[command(short_flag = 'd')]
     Diff(DiffArgs),
     /// Snapshots of the session, the live state last (same as `psm snapshots`)
-    #[command(short_flag = 'l', long_flag = "list")]
+    #[command(short_flag = 'l')]
     List,
     /// Active session summary (same as running without a command)
-    #[command(long_flag = "status")]
     Status,
     /// One report over two snapshots [default: baseline -> now], or the session timeline
     #[command(after_help = format!("\
@@ -140,7 +138,6 @@ Examples:
   psm report timeline --name chrome one program across all snapshots
 
 {REFERENCES}"))]
-    #[command(long_flag = "report")]
     Report {
         /// Which report
         kind: ReportKind,
@@ -148,29 +145,23 @@ Examples:
         diff: DiffArgs,
     },
     /// Sessions: list (the default), activate, deactivate, compare, export, import, delete, purge, reset
-    #[command(
-        long_flag = "sessions",
-        after_help = "\
+    #[command(after_help = "\
 Examples:
   psm sessions                          id, name, created, snapshot count and state of each
   psm sessions activate chrome-153      make it the active one
   psm sessions compare chrome-153 chrome-154
   psm sessions export > chrome-154.json
-  psm sessions purge --older-than 180d"
-    )]
+  psm sessions purge --older-than 180d")]
     Sessions {
         #[command(subcommand)]
         cmd: Option<SessionsCmd>,
     },
     /// Snapshots of the session: list (the default), delete one, or reset (start the session over)
-    #[command(
-        long_flag = "snapshots",
-        after_help = "\
+    #[command(after_help = "\
 Examples:
   psm snapshots                    number, label, time and process count of each snapshot
   psm snapshots delete 2           one snapshot; without a number, the newest
-  psm snapshots reset              delete every snapshot, take a new baseline (asks first)"
-    )]
+  psm snapshots reset              delete every snapshot, take a new baseline (asks first)")]
     Snapshots {
         #[command(subcommand)]
         cmd: Option<SnapshotsCmd>,
@@ -180,7 +171,7 @@ Examples:
     /// The JSON is the `psm sessions export` format, so `psm sessions
     /// import` loads it as a session of its own and `psm import` adds its
     /// snapshots to an existing session.
-    #[command(long_flag = "export", after_help = format!("\
+    #[command(after_help = format!("\
 Examples:
   psm export > latest.json           the newest snapshot of the active session
   psm export after-update > s.json   by label or number
@@ -208,15 +199,12 @@ Examples:
     /// every snapshot in it to the active session, keeping labels and
     /// timestamps. The file's own baseline arrives as a plain snapshot: the
     /// session keeps the baseline it has.
-    #[command(
-        long_flag = "import",
-        after_help = "\
+    #[command(after_help = "\
 Examples:
   psm export > s.json                  on one machine
   psm import s.json                    into the active session on another
   psm sessions activate old; psm import s.json  into another session
-  psm export | psm --db other.db import -"
-    )]
+  psm export | psm --db other.db import -")]
     Import {
         /// File written by `psm export`; `-` reads standard input
         file: PathBuf,
@@ -228,7 +216,7 @@ Examples:
         init: bool,
     },
     /// Copy the database to PATH
-    #[command(short_flag = 'b', long_flag = "backup")]
+    #[command(short_flag = 'b')]
     Backup {
         /// Destination file; must not exist
         path: PathBuf,
@@ -240,15 +228,12 @@ Examples:
     /// --shell). Safe to run again: existing config and database are left
     /// alone, the completion script is refreshed. `psm init force` deletes
     /// both first and recreates them with the defaults (asks first).
-    #[command(
-        long_flag = "init",
-        after_help = "\
+    #[command(after_help = "\
 Examples:
   psm init                 create what is missing, refresh the completions
   psm init --shell zsh
   psm init force           delete the database and the config file, then set up fresh (asks first)
-  psm init force --yes"
-    )]
+  psm init force --yes")]
     Init {
         /// Shell to install completions for [default: from $SHELL]
         #[arg(long)]
@@ -260,7 +245,7 @@ Examples:
     ///
     /// With words, only rows whose question or command contains every
     /// word are shown, ignoring case: `psm faq what`, `psm faq memory grew`.
-    #[command(short_flag = 'f', long_flag = "faq")]
+    #[command(short_flag = 'f')]
     Faq {
         /// Words to filter by (all must match, case-insensitive)
         words: Vec<String>,
@@ -273,7 +258,6 @@ Setup (once, then open a new shell):
   fish   psm completions fish > ~/.config/fish/completions/psm.fish
 
 Session names and snapshot labels are not completed; they live in the database.")]
-    #[command(long_flag = "completions")]
     Completions {
         /// Shell to generate for
         shell: clap_complete::Shell,
@@ -333,7 +317,6 @@ pub enum ProcsCmd {
     /// Processes now, with CPU and memory (the default)
     #[command(
         short_flag = 'l',
-        long_flag = "list",
         after_help = "\
 Examples:
   psm procs list --sort cpu --top 10     the ten busiest
@@ -347,7 +330,7 @@ Examples:
         interval: Option<String>,
     },
     /// Processes of one stored snapshot; the options of list apply
-    #[command(long_flag = "show", after_help = REFERENCES)]
+    #[command(after_help = REFERENCES)]
     Show {
         /// baseline, latest, prev, now, a number, or a label
         #[arg(default_value = "latest")]
@@ -362,21 +345,18 @@ Examples:
 #[derive(Subcommand)]
 pub enum SessionsCmd {
     /// All sessions, with their state: active or inactive (the default)
-    #[command(short_flag = 'l', long_flag = "list")]
+    #[command(short_flag = 'l')]
     List,
     /// Make another session the active one
     ///
     /// There is one active session: the one `snap` adds to and `diff`
     /// compares against the live state. The others are inactive but kept;
     /// `psm sessions activate <name|id>` makes any of them active again, at any time.
-    #[command(
-        long_flag = "activate",
-        after_help = "\
+    #[command(after_help = "\
 Examples:
   psm sessions               see the names and ids
   psm sessions activate chrome-153    by name
-  psm sessions activate 2             by id"
-    )]
+  psm sessions activate 2             by id")]
     Activate {
         /// Session name or id
         session: String,
@@ -400,7 +380,6 @@ Examples:
     /// is gone. The configuration file is kept. Asks for confirmation
     /// unless --yes is given; anything but "y" or "yes" deletes nothing.
     /// `psm backup <path>` makes a copy first.
-    #[command(long_flag = "reset")]
     Reset {
         /// Do not ask for confirmation
         #[arg(long, short = 'y')]
@@ -488,7 +467,7 @@ Examples:
 #[derive(Subcommand)]
 pub enum SnapshotsCmd {
     /// Snapshots of the session: number, label, time, process count (the default)
-    #[command(short_flag = 'l', long_flag = "list")]
+    #[command(short_flag = 'l')]
     List,
     /// Delete one snapshot [default: latest]; the others keep their numbers
     ///
@@ -513,7 +492,7 @@ Examples:
     /// The session keeps its name and id, the live state becomes its new #0.
     /// `psm export --all > file.json` keeps a copy first. `psm sessions
     /// reset` is the other reset: it deletes the whole database.
-    #[command(short_flag = 'r', long_flag = "reset")]
+    #[command(short_flag = 'r')]
     Reset {
         /// Do not ask for confirmation
         #[arg(long, short = 'y')]

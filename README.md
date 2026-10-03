@@ -60,7 +60,7 @@ Linux only. The Cargo package is `tool-psm`; the binary is `psm`.
 | `psm completions <shell>` | Shell completion script, for other shells or machines |
 
 `psm faq` prints the questions-to-commands table; `psm <command> --help` lists every option.
-Every command also works as a flag: `psm -s` and `psm --snap` are `psm snap` (`psm <command> -h` shows its letter).
+Some commands have a letter: `psm -s` is `psm snap` (`psm -h` shows them). Double dashes are options.
 
 ## Documentation
 
