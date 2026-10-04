@@ -758,7 +758,7 @@ them in `psm -h` (`snap, -s`): `psm -s` is `psm snap`, options follow as
 usual (`psm -p --top 10`, `psm -d prev --memory`). Double dashes are
 options only; the sole exceptions are `--help` and `--version`, which
 every tool honours. Letters: `-p` procs, `-i` info, `-n` new, `-s` snap,
-`-l` list, `-d` diff, `-b` backup, `-f` faq, `-h` help, `-v` version;
+`-l` list, `-d` diff, `-b` backup, `-q` faq, `-h` help, `-v` version;
 `psm <command> -h` shows a group's own letters: `-l` for every `list`
 and `-r` for `snapshots reset`.
 

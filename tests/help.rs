@@ -115,7 +115,7 @@ fn commands_have_flag_forms() {
         "\n  status ",
         "Sessions and snapshots:\n  sessions ",
         "Setup:\n  init ",
-        "Help:\n  faq, -f ",
+        "Help:\n  faq, -q ",
         "\n  version, -v ",
         "\n  config ",
         "work as a flag",
@@ -136,7 +136,7 @@ fn commands_have_flag_forms() {
             .contains("unexpected argument"),
         "double dashes are options, not commands"
     );
-    assert!(e.ok("before", &["-f", "5.4"]).contains("sessions purge"));
+    assert!(e.ok("before", &["-q", "5.4"]).contains("sessions purge"));
     // procs: list is the default, show the other subcommand; both have flag forms.
     assert_eq!(
         e.ok(

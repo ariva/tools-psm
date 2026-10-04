@@ -272,7 +272,7 @@ Examples:
     ///
     /// With words, only rows whose question or command contains every
     /// word are shown, ignoring case: `psm faq what`, `psm faq memory grew`.
-    #[command(short_flag = 'f')]
+    #[command(short_flag = 'q')]
     Faq {
         /// Words to filter by (all must match, case-insensitive)
         words: Vec<String>,
