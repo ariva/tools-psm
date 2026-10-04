@@ -61,7 +61,7 @@ Nothing below `commands` knows about clap.
 | `build.rs` | Stamps the short commit hash (`-dirty` when the tree has changes) and the build date into the binary for `psm version`; "unknown" when git or date is missing. |
 | `cli/commands.rs` | `Cmd`, `SessionCmd`, `ReportKind`, `ExportFormat`, help texts and examples. |
 | `commands/` | One handler file per command group. |
-| `commands/mod.rs` | `Ctx` (flags + environment + config merged) and `run()`, the dispatch. |
+| `commands/mod.rs` | `Ctx` (flags + environment + config merged), `run()`, the dispatch, and the `--watch` loop around it. |
 | `commands/views.rs` | `procs` (`list`, the default, and `show`), `info`. |
 | `commands/capture.rs` | `new`, `snap`, and the never-stored live snapshot behind `now`. |
 | `commands/compare.rs` | `diff`, `report`, `compare`: reference resolution, diff settings, sections, the closing digest. |
@@ -172,6 +172,17 @@ stay inside `store`; `Snapshot::id` is the number. The live state
   file cannot be opened (a newer schema). It is the only command that
   asks for confirmation; the answer is read from standard input, so a
   script without `--yes` gets "no".
+- **`--watch` is a loop around the dispatch**, not a mode inside each
+  command: switch to the alternate screen (`?1049h`, as `watch(1)` does,
+  so frames stay out of the scrollback), clear, run the same `Cmd`
+  again, then count down a second at a time on a footer line rewritten
+  with `\r` (the cursor never leaves it, so scrolling cannot misplace
+  it). No terminal crate: three escape sequences, and a `libc` signal
+  handler for SIGINT/SIGTERM/SIGHUP that writes `?1049l` and `_exit`s,
+  so Ctrl-C never leaves the terminal on the alternate screen. It is
+  refused for anything that does not read the live state (`snap` in a
+  loop would fill the database), so `watchable` lists the live views.
+  Ctrl-C ends it the ordinary way; nothing needs cleaning up.
 - **The version line comes first.** `commands::run` prints it before
   any command a person reads, only when stdout is a terminal and the
   command is not data (`--json`, `export`, `completions`, `help`,

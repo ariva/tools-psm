@@ -43,7 +43,7 @@ pub enum ExportFormat {
     Csv,
 }
 
-#[derive(Subcommand)]
+#[derive(Clone, Subcommand)]
 pub enum Cmd {
     /// Processes: now (list, the default) or of a stored snapshot (show)
     #[command(
@@ -335,7 +335,7 @@ pub fn build_info() -> serde_json::Value {
     })
 }
 
-#[derive(Subcommand)]
+#[derive(Clone, Subcommand)]
 pub enum InitCmd {
     /// Delete the database and the config file, then set everything up fresh (asks first)
     ///
@@ -349,7 +349,7 @@ pub enum InitCmd {
     },
 }
 
-#[derive(Subcommand)]
+#[derive(Clone, Subcommand)]
 pub enum ProcsCmd {
     /// Processes now, with CPU and memory (the default)
     #[command(
@@ -379,7 +379,7 @@ Examples:
 
 // Compare and Export carry filters and options, List nothing; clap builds it once.
 #[allow(clippy::large_enum_variant)]
-#[derive(Subcommand)]
+#[derive(Clone, Subcommand)]
 pub enum SessionsCmd {
     /// All sessions, with their state: active or inactive (the default)
     #[command(short_flag = 'l')]
@@ -515,7 +515,7 @@ Examples:
 
 // Diff carries every filter and view option, Reset one bool; clap builds it once.
 #[allow(clippy::large_enum_variant)]
-#[derive(Subcommand)]
+#[derive(Clone, Subcommand)]
 pub enum SnapshotsCmd {
     /// Snapshots of the session: number, label, time, process count (the default)
     #[command(short_flag = 'l')]

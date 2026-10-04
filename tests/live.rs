@@ -123,3 +123,27 @@ fn list_reads_the_process_table() {
     );
     assert_eq!(by_name[0]["name"], "code");
 }
+
+#[test]
+fn watch_repeats_live_views_only() {
+    let e = Env::new("watch");
+    let err = e.fails("before", &["--watch", "snap"]);
+    assert!(err.contains("--watch repeats live views only"), "{err}");
+    let err = e.fails("before", &["info", "--watch", "0"]);
+    assert!(err.contains("above zero"), "{err}");
+    e.before_and_after(&[]);
+    let err = e.fails("after", &["diff", "0", "1", "--watch"]);
+    assert!(err.contains("live views only"), "{err}");
+    // A live diff is allowed: the loop starts, so only the first round is checked.
+    let mut child = e
+        .command("after")
+        .args(["--config", "/dev/null", "diff", "--watch", "1", "--json"])
+        .stdout(std::process::Stdio::piped())
+        .spawn()
+        .unwrap();
+    std::thread::sleep(std::time::Duration::from_millis(1500));
+    child.kill().unwrap();
+    let out = child.wait_with_output().unwrap();
+    let text = String::from_utf8(out.stdout).unwrap();
+    assert!(text.contains("\"new\""), "first round printed: {text}");
+}

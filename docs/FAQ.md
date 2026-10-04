@@ -40,6 +40,7 @@ word given must match), and `psm faq 5.3` picks one row by number.
 | 2.4 | How much memory does each user take? | `psm procs --group user` | [grouping](USAGE.md#grouping) |
 | 2.5 | How much memory does each service or container take? | `psm procs --group cgroup` | [grouping](USAGE.md#grouping) |
 | 2.6 | Which processes run this exact binary? | `psm procs --exe /opt/google/chrome/chrome` | [filters](USAGE.md#filters-and-global-options) |
+| 2.7 | How do I keep a live view refreshing? | `psm info --watch` (every 10s; `--watch 30` for 30s; also `procs`, `diff`) | [watching](USAGE.md#watching) |
 
 The I/O figure is bytes read and written since each process started,
 not a rate.

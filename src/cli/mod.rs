@@ -30,7 +30,7 @@ const HELP_TEMPLATE: &str = concat!(
 
 /// Named snapshots of the process table and before/after comparison of
 /// memory, CPU and process changes.
-#[derive(Parser)]
+#[derive(Clone, Parser)]
 #[command(
     name = "psm",
     author,
@@ -116,6 +116,26 @@ pub struct Cli {
     /// Example: psm diff --json | jq .top.groups
     #[arg(long, global = true, help_heading = "Global options")]
     pub json: bool,
+
+    /// Repeat a live view every DURATION [default: 10s]
+    ///
+    /// Clears the screen, runs the command again and counts down to the
+    /// next round, until Ctrl-C. Only
+    /// for views of the live state: `procs`, `info`, `procs show now`,
+    /// and `diff` or `report` with `now` on one side (the default).
+    /// A bare number is seconds. With `--json` nothing is cleared: one
+    /// document per round.
+    ///
+    /// Example: psm info --watch 30
+    #[arg(
+        long,
+        global = true,
+        help_heading = "Global options",
+        value_name = "DURATION",
+        num_args = 0..=1,
+        default_missing_value = "10s"
+    )]
+    pub watch: Option<String>,
 
     #[command(subcommand)]
     pub cmd: Option<Cmd>,

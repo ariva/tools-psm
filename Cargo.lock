@@ -697,6 +697,7 @@ dependencies = [
  "anyhow",
  "clap",
  "clap_complete",
+ "libc",
  "procfs",
  "regex",
  "rusqlite",

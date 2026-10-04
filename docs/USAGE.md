@@ -29,7 +29,7 @@ the same list at the command line.
 
 - [Concepts](#concepts)
 - [A typical session](#a-typical-session)
-- [Live views: `list`, `info`](#live-views)
+- [Live views: `list`, `info`, `--watch`](#live-views)
 - [Capturing: `new`, `snap`](#capturing)
 - [Comparing: `diff`](#comparing)
 - [Reports](#reports)
@@ -234,6 +234,25 @@ PID  PPID  USER    %CPU  %MEM       RSS  THR  COMMAND
 ```
 
 `--by` takes `cpu`, `mem`, `threads` (the default three), `swap`, `io`.
+
+### Watching
+
+`--watch [duration]` repeats a live view until Ctrl-C, clearing the
+screen each round; the default is every 10 seconds, a bare number is
+seconds. It works with `procs`, `info`, `procs show now`, and `diff` or
+`report` when `now` is one side (the default); anything else is refused,
+there is nothing new to see. Like `watch(1)` and `top`, it runs on the
+terminal's alternate screen: old rounds never reach the scrollback, and
+Ctrl-C brings the shell's screen back as it was. A footer, `Every 10s,
+round 3, next refresh in 7s, Ctrl-C stops`, counts down in place under
+the output. With `--json` the screen is not touched and nothing counts
+down: one document per round.
+
+```bash
+psm info --watch              # every 10s
+psm procs --sort cpu --top 10 --watch 2
+psm diff --memory --watch 30  # baseline -> now, again every 30s
+```
 `used` is `MemTotal - MemAvailable`, not a sum of process memory.
 
 ## Capturing
@@ -729,8 +748,8 @@ psm version                 # name, version, build date and commit; also psm -v,
 `help`, `-h` and `--help` are one command: `psm -h snapshots diff` is
 `psm help snapshots diff` on fewer lines.
 
-Global options (`--config`, `--db`, `--kernel`, `--json`, `--proc-root`)
-work with every command and can go before or after it: `psm --json diff`
+Global options (`--config`, `--db`, `--kernel`, `--json`, `--watch`,
+`--proc-root`) work with every command and can go before or after it: `psm --json diff`
 and `psm diff --json` are the same. They are listed by `psm -h`; a
 command's own help lists only its options.
 
@@ -839,10 +858,11 @@ Global options, accepted everywhere:
 | `--db [path]` | database file; also `PSM_DB`. Alone, with no command: shows the database in use and its schema version |
 | `--kernel` | include kernel threads |
 | `--json` | machine-readable output |
+| `--watch [duration]` | repeat a live view every duration (default `10s`) until Ctrl-C; see [Watching](#watching) |
 | `--proc-root <dir>` | read process data from a directory instead of `/proc` (tests) |
 
 Sizes (`--min-delta`) accept `500K`, `10M`, `1G`; the base is 1024.
-Durations (`--interval`, `--older-than`) accept `500ms`, `10s`, `5m`,
+Durations (`--interval`, `--watch`, `--older-than`) accept `500ms`, `10s`, `5m`,
 `2h`, `180d`.
 
 ## Reading the numbers

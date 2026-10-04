@@ -11,9 +11,9 @@ mod views;
 
 use std::collections::HashMap;
 use std::path::PathBuf;
-use std::time::Instant;
+use std::time::{Duration, Instant};
 
-use anyhow::{Context, Result};
+use anyhow::{Context, Result, bail};
 use regex::Regex;
 
 use crate::analysis::view::{self, View};
@@ -342,7 +342,115 @@ pub fn run(cli: Cli) -> Result<()> {
     if bare_db {
         return setup::database(&ctx);
     }
-    match cli.cmd.unwrap_or(Cmd::Status) {
+    let cmd = cli.cmd.unwrap_or(Cmd::Status);
+    match cli.watch {
+        Some(every) => watch(&ctx, cmd, &every),
+        None => dispatch(&ctx, cmd),
+    }
+}
+
+/// `--watch`: clear the screen and run a live view again every `every`
+/// until Ctrl-C. With `--json` nothing is cleared: one document per round.
+fn watch(ctx: &Ctx, cmd: Cmd, every: &str) -> Result<()> {
+    if !watchable(&cmd) {
+        bail!(
+            "--watch repeats live views only: procs, info, procs show now, diff/report against now"
+        );
+    }
+    let every = parse_duration(every)?;
+    if every.is_zero() {
+        bail!("--watch needs a duration above zero");
+    }
+    if ctx.json {
+        loop {
+            dispatch(ctx, cmd.clone())?;
+            std::thread::sleep(every);
+        }
+    }
+    // The alternate screen, as `watch(1)` and `top` use it: frames never
+    // reach the scrollback, and the shell's screen comes back on exit.
+    unsafe {
+        let handler = leave_alt_screen as extern "C" fn(libc::c_int) as libc::sighandler_t;
+        libc::signal(libc::SIGINT, handler);
+        libc::signal(libc::SIGTERM, handler);
+        libc::signal(libc::SIGHUP, handler);
+    }
+    print!("{ALT_ON}");
+    let result = (1..).try_for_each(|round| {
+        // Clear the screen, cursor home; the version line stays out of the loop.
+        print!("\x1b[2J\x1b[H");
+        dispatch(ctx, cmd.clone())?;
+        countdown(every, round);
+        Ok(())
+    });
+    // An error must be readable: leave the alternate screen before it prints.
+    print!("{ALT_OFF}");
+    let _ = std::io::Write::flush(&mut std::io::stdout());
+    result
+}
+
+const ALT_ON: &str = "\x1b[?1049h";
+const ALT_OFF: &str = "\x1b[?1049l";
+
+/// Ctrl-C inside `--watch`: restore the screen, then exit as the signal
+/// would have. Only `write` and `_exit` here; nothing else is safe in a
+/// signal handler.
+extern "C" fn leave_alt_screen(_: libc::c_int) {
+    unsafe {
+        libc::write(1, ALT_OFF.as_ptr().cast(), ALT_OFF.len());
+        libc::_exit(130);
+    }
+}
+
+/// `Every 10s, round 3, next refresh in 7s, Ctrl-C stops`
+fn footer(every: Duration, round: u32, left: Duration) -> String {
+    format!(
+        "Every {}s, round {round}, next refresh in {}s, Ctrl-C stops",
+        every.as_secs_f64(),
+        left.as_secs_f64().ceil()
+    )
+}
+
+/// The footer under the output, rewritten in place once a second. The
+/// cursor never leaves that line, so scrolling cannot misplace it.
+fn countdown(every: Duration, round: u32) {
+    let started = Instant::now();
+    println!();
+    loop {
+        let left = every.saturating_sub(started.elapsed());
+        if left.is_zero() {
+            break;
+        }
+        // Carriage return, overwrite, clear the rest of the line.
+        print!("\r{}\x1b[K", footer(every, round, left));
+        let _ = std::io::Write::flush(&mut std::io::stdout());
+        std::thread::sleep(left.min(Duration::from_secs(1)));
+    }
+}
+
+/// Commands that read the live state: the only ones worth repeating.
+fn watchable(cmd: &Cmd) -> bool {
+    let live_side = |d: &crate::cli::DiffArgs| {
+        d.a.as_deref() == Some("now") || d.b.as_deref().unwrap_or("now") == "now"
+    };
+    match cmd {
+        Cmd::Procs { cmd: None, .. }
+        | Cmd::Procs {
+            cmd: Some(ProcsCmd::List { .. }),
+            ..
+        }
+        | Cmd::Info { .. } => true,
+        Cmd::Procs {
+            cmd: Some(ProcsCmd::Show { snapshot, .. }),
+            ..
+        } => snapshot == "now",
+        Cmd::Diff(args) | Cmd::Report { diff: args, .. } => live_side(args),
+        _ => false,
+    }
+}
+
+fn dispatch(ctx: &Ctx, cmd: Cmd) -> Result<()> {
+    match cmd {
         Cmd::Procs {
             view,
             interval,
@@ -351,11 +459,11 @@ pub fn run(cli: Cli) -> Result<()> {
         | Cmd::Procs {
             cmd: Some(ProcsCmd::List { view, interval }),
             ..
-        } => views::list(&ctx, &view, &interval),
+        } => views::list(ctx, &view, &interval),
         Cmd::Procs {
             cmd: Some(ProcsCmd::Show { snapshot, view }),
             ..
-        } => views::show(&ctx, &snapshot, &view),
+        } => views::show(ctx, &snapshot, &view),
         Cmd::Info {
             n,
             top,
@@ -364,38 +472,30 @@ pub fn run(cli: Cli) -> Result<()> {
             interval,
             deep,
             filter,
-        } => views::info(
-            &ctx,
-            top.unwrap_or(n),
-            &by,
-            &group,
-            &interval,
-            deep,
-            &filter,
-        ),
+        } => views::info(ctx, top.unwrap_or(n), &by, &group, &interval, deep, &filter),
         Cmd::New {
             name,
             description,
             capture,
-        } => capture::new_session(&ctx, name, description, &capture),
+        } => capture::new_session(ctx, name, description, &capture),
         Cmd::Snap {
             label,
             description,
             capture,
-        } => capture::snap(&ctx, label, description, &capture),
-        Cmd::Status => sessions::status(&ctx),
-        Cmd::List => sessions::snapshots(&ctx),
-        Cmd::Report { kind, diff: args } => compare::report(&ctx, kind, &args),
+        } => capture::snap(ctx, label, description, &capture),
+        Cmd::Status => sessions::status(ctx),
+        Cmd::List => sessions::snapshots(ctx),
+        Cmd::Report { kind, diff: args } => compare::report(ctx, kind, &args),
         Cmd::Sessions { cmd: None }
         | Cmd::Sessions {
             cmd: Some(SessionsCmd::List),
-        } => sessions::sessions(&ctx),
+        } => sessions::sessions(ctx),
         Cmd::Sessions {
             cmd: Some(SessionsCmd::Purge { older_than }),
-        } => maintenance::purge(&ctx, &older_than),
+        } => maintenance::purge(ctx, &older_than),
         Cmd::Sessions { cmd: Some(cmd) } => match cmd {
-            SessionsCmd::Activate { session } => sessions::switch(&ctx, &session),
-            SessionsCmd::Deactivate => sessions::deactivate(&ctx),
+            SessionsCmd::Activate { session } => sessions::switch(ctx, &session),
+            SessionsCmd::Deactivate => sessions::deactivate(ctx),
             SessionsCmd::Compare {
                 a,
                 b,
@@ -403,30 +503,30 @@ pub fn run(cli: Cli) -> Result<()> {
                 metric,
                 top,
                 filter,
-            } => compare::sessions(&ctx, &a, &b, group, metric, top, filter),
+            } => compare::sessions(ctx, &a, &b, group, metric, top, filter),
             SessionsCmd::Export {
                 session,
                 all,
                 format,
                 no_cmdline,
-            } => sessions::export(&ctx, session, all, format, no_cmdline),
-            SessionsCmd::Import { file, name } => sessions::import(&ctx, &file, name),
-            SessionsCmd::Delete { session } => sessions::delete(&ctx, &session),
+            } => sessions::export(ctx, session, all, format, no_cmdline),
+            SessionsCmd::Import { file, name } => sessions::import(ctx, &file, name),
+            SessionsCmd::Delete { session } => sessions::delete(ctx, &session),
             SessionsCmd::Rename {
                 session,
                 name,
                 description,
-            } => sessions::rename(&ctx, &session, &name, description.as_deref()),
-            SessionsCmd::Reset { yes } => maintenance::reset(&ctx, yes),
+            } => sessions::rename(ctx, &session, &name, description.as_deref()),
+            SessionsCmd::Reset { yes } => maintenance::reset(ctx, yes),
             SessionsCmd::List | SessionsCmd::Purge { .. } => unreachable!("matched above"),
         },
         Cmd::Snapshots { cmd: None }
         | Cmd::Snapshots {
             cmd: Some(SnapshotsCmd::List),
-        } => sessions::snapshots(&ctx),
+        } => sessions::snapshots(ctx),
         Cmd::Snapshots {
             cmd: Some(SnapshotsCmd::Delete { snapshot }),
-        } => sessions::delete_snapshot(&ctx, snapshot.as_deref()),
+        } => sessions::delete_snapshot(ctx, snapshot.as_deref()),
         Cmd::Snapshots {
             cmd:
                 Some(SnapshotsCmd::Rename {
@@ -434,25 +534,25 @@ pub fn run(cli: Cli) -> Result<()> {
                     label,
                     description,
                 }),
-        } => sessions::rename_snapshot(&ctx, &snapshot, &label, description.as_deref()),
+        } => sessions::rename_snapshot(ctx, &snapshot, &label, description.as_deref()),
         Cmd::Snapshots {
             cmd: Some(SnapshotsCmd::Reset { yes, capture }),
-        } => maintenance::purge_session(&ctx, yes, &capture),
-        Cmd::Diff(args) => compare::diff(&ctx, &args),
+        } => maintenance::purge_session(ctx, yes, &capture),
+        Cmd::Diff(args) => compare::diff(ctx, &args),
         Cmd::Export {
             all: true,
             format,
             no_cmdline,
             ..
-        } => sessions::export(&ctx, None, false, format, no_cmdline),
+        } => sessions::export(ctx, None, false, format, no_cmdline),
         Cmd::Export {
             snapshot,
             format,
             no_cmdline,
             ..
-        } => sessions::export_snapshot(&ctx, snapshot, format, no_cmdline),
-        Cmd::Import { file } => sessions::import_snapshots(&ctx, &file),
-        Cmd::Backup { path } => maintenance::backup(&ctx, &path),
+        } => sessions::export_snapshot(ctx, snapshot, format, no_cmdline),
+        Cmd::Import { file } => sessions::import_snapshots(ctx, &file),
+        Cmd::Backup { path } => maintenance::backup(ctx, &path),
         Cmd::Config { .. }
         | Cmd::Completions { .. }
         | Cmd::Init { .. }

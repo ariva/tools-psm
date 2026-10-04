@@ -4,7 +4,7 @@ use clap::Args;
 
 use super::values::{group_keys, metrics, sort_columns};
 
-#[derive(Args, Default)]
+#[derive(Args, Clone, Default)]
 pub struct FilterArgs {
     /// Only processes of this user (name or uid)
     #[arg(long)]
@@ -20,7 +20,7 @@ pub struct FilterArgs {
     pub exclude_regex: Option<String>,
 }
 
-#[derive(Args)]
+#[derive(Args, Clone)]
 pub struct ViewArgs {
     /// One row per distinct group instead of one row per process
     #[arg(long, value_name = "KEY", value_parser = group_keys())]
@@ -41,7 +41,7 @@ pub struct ViewArgs {
     pub filter: FilterArgs,
 }
 
-#[derive(Args)]
+#[derive(Args, Clone)]
 pub struct CaptureArgs {
     /// Also collect PSS/USS (reads smaps_rollup; slower)
     #[arg(long, num_args = 0..=1, require_equals = true, default_missing_value = "true", value_name = "BOOL")]
@@ -51,7 +51,7 @@ pub struct CaptureArgs {
     pub no_cmdline: bool,
 }
 
-#[derive(Args, Default)]
+#[derive(Args, Clone, Default)]
 pub struct DiffArgs {
     /// Snapshot: baseline, latest, prev, now, an id, or a label [default: baseline]
     pub a: Option<String>,

@@ -92,6 +92,10 @@ const FAQ: &[(&str, &[(&str, &str)])] = &[
                 "Which processes run this exact binary?",
                 "psm procs --exe /opt/google/chrome/chrome",
             ),
+            (
+                "How do I keep a live view refreshing?",
+                "psm info --watch   (every 10s; --watch 30 for 30s; also procs, diff)",
+            ),
         ],
     ),
     (
