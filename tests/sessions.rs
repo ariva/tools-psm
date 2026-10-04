@@ -27,8 +27,16 @@ fn session_rules() {
     );
     assert!(e.fails("before", &["snap", "latest"]).contains("reserved"));
 
-    // init makes the previous session inactive; nothing is deleted.
-    e.ok("after", &["new", "b"]);
+    // init makes the previous session inactive; nothing is deleted. A description travels with the session.
+    e.ok("after", &["new", "b", "second run"]);
+    assert_eq!(
+        e.json("after", &["sessions", "--json"])[1]["description"],
+        "second run"
+    );
+    assert!(
+        e.ok("after", &["status"])
+            .starts_with("Session: b (second run)")
+    );
     assert!(e.fails("after", &["new", "a"]).contains("already exists"));
     let sessions = e.json("after", &["sessions", "--json"]);
     assert_eq!(
@@ -134,6 +142,7 @@ fn session_rules() {
 fn export_then_import_round_trips() {
     let e = Env::new("export");
     e.before_and_after(&[]);
+    e.ok("after", &["sessions", "rename", "t", "t", "round trip"]);
     let dump = e.ok("after", &["sessions", "export"]);
     let file = std::env::temp_dir().join(format!("psm-test-{}-export.json", std::process::id()));
     fs::write(&file, &dump).unwrap();
@@ -156,6 +165,10 @@ fn export_then_import_round_trips() {
     assert_eq!(
         sessions[1]["created"], sessions[0]["created"],
         "original timestamps are kept"
+    );
+    assert_eq!(
+        sessions[1]["description"], "round trip",
+        "so is the description"
     );
 
     // The copy is the same data: comparing it with the original finds nothing,
@@ -357,6 +370,68 @@ fn snapshot_group() {
         e.fails("after", &["snapshot", "export"])
             .contains("unrecognized subcommand")
     );
+
+    // Descriptions: shown in the list and in titles; `base` is the baseline unless a
+    // snapshot carries that label; rename changes label and description.
+    e.ok(
+        "after",
+        &["snap", "with text", "chrome 154, extensions off"],
+    );
+    let rows = e.json("after", &["list", "--json"]);
+    let row = rows
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|r| r["label"] == "with text")
+        .unwrap();
+    assert_eq!(row["description"], "chrome 154, extensions off");
+    assert!(
+        e.ok("after", &["diff", "latest", "--memory"])
+            .starts_with("MEMORY IMPACT   #3 with text (chrome 154, extensions off) -> now")
+    );
+    assert_eq!(
+        e.json("after", &["diff", "base", "--json"])["from"]["label"],
+        "baseline"
+    );
+    e.ok("after", &["snapshots", "rename", "latest", "base"]);
+    assert_eq!(
+        e.json("after", &["diff", "base", "--json"])["from"]["label"],
+        "base"
+    );
+    assert!(
+        e.ok("after", &["snapshots", "rename", "3", "renamed", ""])
+            .contains("is now #3 renamed.")
+    );
+    assert!(
+        e.fails("after", &["snapshots", "rename", "3", "latest"])
+            .contains("reserved")
+    );
+    assert!(
+        e.ok("after", &["sessions", "rename", "b", "bee", "renamed too"])
+            .contains("is now \"bee\" (renamed too)")
+    );
+    let listed = e.json("after", &["sessions", "--json"]);
+    let bee = listed
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|r| r["name"] == "bee")
+        .unwrap();
+    assert_eq!(bee["description"], "renamed too");
+    assert!(
+        e.ok("after", &["sessions", "rename", "bee", "bee", ""])
+            .ends_with("is now \"bee\".\n")
+    );
+    assert!(
+        e.fails("after", &["sessions", "rename", "bee", "t"])
+            .contains("already exists")
+    );
+    assert_eq!(
+        e.json("after", &["status", "--json"])["session"]["name"],
+        "bee"
+    );
+    e.ok("after", &["sessions", "rename", "bee", "b"]);
+    e.ok("after", &["snapshots", "delete", "3"]);
 
     // purge starts the active session over: without a yes nothing happens.
     assert!(

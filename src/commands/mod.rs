@@ -208,7 +208,10 @@ const COMMAND_GROUPS: &[(&str, &[&str])] = &[
         "Sessions and snapshots:",
         &["sessions", "snapshots", "export", "import"],
     ),
-    ("Setup:", &["init", "config", "backup", "completions"]),
+    (
+        "Setup:",
+        &["init", "update", "config", "backup", "completions"],
+    ),
     ("Help:", &["faq", "help", "version"]),
 ];
 
@@ -272,7 +275,27 @@ fn grouped_commands(help: &str, shorts: &[(String, char)]) -> String {
     )
 }
 
+/// Commands whose standard output is data (a file, a script) or already
+/// starts with the version line: no banner for them.
+fn prints_data(cmd: &Option<Cmd>) -> bool {
+    matches!(
+        cmd,
+        Some(Cmd::Version)
+            | Some(Cmd::Help { .. })
+            | Some(Cmd::Completions { .. })
+            | Some(Cmd::Export { .. })
+            | Some(Cmd::Sessions {
+                cmd: Some(SessionsCmd::Export { .. })
+            })
+    )
+}
+
 pub fn run(cli: Cli) -> Result<()> {
+    // Every command a person reads opens with the version line; data for
+    // pipes and scripts (--json, exports, a redirected stdout) stays clean.
+    if !cli.json && !prints_data(&cli.cmd) && std::io::IsTerminal::is_terminal(&std::io::stdout()) {
+        out(format!("{}\n", crate::cli::commands::VERSION_LINE));
+    }
     // Handled before loading the configuration: these must work without one.
     if cli.bare_config() {
         return setup::config(cli.config_path().as_deref(), false);
@@ -282,6 +305,9 @@ pub fn run(cli: Cli) -> Result<()> {
     }
     if let Some(Cmd::Init { .. }) = &cli.cmd {
         return setup::init(&cli);
+    }
+    if let Some(Cmd::Update { .. }) = &cli.cmd {
+        return setup::update(&cli);
     }
     if let Some(Cmd::Faq { words }) = &cli.cmd {
         faq::faq(words, cli.json);
@@ -338,8 +364,16 @@ pub fn run(cli: Cli) -> Result<()> {
             deep,
             filter,
         } => views::info(&ctx, n, &by, &group, &interval, deep, &filter),
-        Cmd::New { name, capture } => capture::new_session(&ctx, name, &capture),
-        Cmd::Snap { label, capture } => capture::snap(&ctx, label, &capture),
+        Cmd::New {
+            name,
+            description,
+            capture,
+        } => capture::new_session(&ctx, name, description, &capture),
+        Cmd::Snap {
+            label,
+            description,
+            capture,
+        } => capture::snap(&ctx, label, description, &capture),
         Cmd::Status => sessions::status(&ctx),
         Cmd::List => sessions::snapshots(&ctx),
         Cmd::Report { kind, diff: args } => compare::report(&ctx, kind, &args),
@@ -369,6 +403,11 @@ pub fn run(cli: Cli) -> Result<()> {
             } => sessions::export(&ctx, session, all, format, no_cmdline),
             SessionsCmd::Import { file, name } => sessions::import(&ctx, &file, name),
             SessionsCmd::Delete { session } => sessions::delete(&ctx, &session),
+            SessionsCmd::Rename {
+                session,
+                name,
+                description,
+            } => sessions::rename(&ctx, &session, &name, description.as_deref()),
             SessionsCmd::Reset { yes } => maintenance::reset(&ctx, yes),
             SessionsCmd::List | SessionsCmd::Purge { .. } => unreachable!("matched above"),
         },
@@ -379,6 +418,14 @@ pub fn run(cli: Cli) -> Result<()> {
         Cmd::Snapshots {
             cmd: Some(SnapshotsCmd::Delete { snapshot }),
         } => sessions::delete_snapshot(&ctx, snapshot.as_deref()),
+        Cmd::Snapshots {
+            cmd:
+                Some(SnapshotsCmd::Rename {
+                    snapshot,
+                    label,
+                    description,
+                }),
+        } => sessions::rename_snapshot(&ctx, &snapshot, &label, description.as_deref()),
         Cmd::Snapshots {
             cmd: Some(SnapshotsCmd::Reset { yes, capture }),
         } => maintenance::purge_session(&ctx, yes, &capture),
@@ -400,6 +447,7 @@ pub fn run(cli: Cli) -> Result<()> {
         Cmd::Config { .. }
         | Cmd::Completions { .. }
         | Cmd::Init { .. }
+        | Cmd::Update { .. }
         | Cmd::Faq { .. }
         | Cmd::Help { .. }
         | Cmd::Version => {

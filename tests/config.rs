@@ -138,7 +138,7 @@ fn first_init_leaves_a_config_file() {
     let text = fs::read_to_string(&file).unwrap();
     assert!(text.contains("[collection]") && text.contains("min_memory_delta"));
     assert!(stdout(&psm(&["config"])).contains("(in use)"));
-    assert!(stdout(&psm(&["--db"])).contains("exists, 1 session(s)"));
+    assert!(stdout(&psm(&["--db"])).contains("schema 3; exists, 1 session(s)"));
 
     // It is the user's file from then on: never rewritten.
     fs::write(&file, "[display]\nkernel = true\n").unwrap();

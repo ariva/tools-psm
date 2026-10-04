@@ -31,9 +31,11 @@ check: lint test
 run *args:
     cargo run -q -- {{args}}
 
-# install into ~/.cargo/bin, overwriting any existing binary, deps pinned to Cargo.lock; extra flags pass through
+# install into ~/.cargo/bin, overwriting any existing binary, deps pinned to Cargo.lock; extra flags pass through.
+# Then `psm update`: database schema, config check, completions, so nothing lags the binary.
 install *args:
     cargo install --path . --force --locked {{args}}
+    psm update
 
 # Static x86_64 builds: one file that runs on any x86_64 Linux, no glibc
 # version to match. Needs the musl target and C compiler once:

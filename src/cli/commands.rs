@@ -10,6 +10,7 @@ use super::values::{group_keys, info_tables, metrics};
 const REFERENCES: &str = "\
 Snapshot references:
   baseline   first snapshot of the session
+  base       the same, unless a snapshot is labelled base
   latest     newest snapshot of the session
   prev       the snapshot before the one it is compared with
   now        the live state; collected for this command, never stored
@@ -100,14 +101,25 @@ Examples:
     New {
         /// Session name [default: session-YYYYMMDD-HHMMSS]
         name: Option<String>,
+        /// Free text shown next to the name
+        description: Option<String>,
         #[command(flatten)]
         capture: CaptureArgs,
     },
     /// Another snapshot in the active session
-    #[command(short_flag = 's')]
+    #[command(
+        short_flag = 's',
+        after_help = "\
+Examples:
+  psm snap
+  psm snap after-update
+  psm snap \"after update\" \"chrome 154, extensions off\"   label and description"
+    )]
     Snap {
         /// Label for the snapshot (not baseline, latest, prev or now)
         label: Option<String>,
+        /// Free text shown next to the label
+        description: Option<String>,
         #[command(flatten)]
         capture: CaptureArgs,
     },
@@ -241,6 +253,17 @@ Examples:
         #[command(subcommand)]
         cmd: Option<InitCmd>,
     },
+    /// After installing a new psm: upgrade the database in place, check the config, refresh completions
+    ///
+    /// The database is brought to the current schema with a copy kept next
+    /// to it (`psm.db.v2.bak`); nothing is deleted. The config file is
+    /// parsed and reported, the completion script rewritten. Safe to run
+    /// at any time; `just install` runs it.
+    Update {
+        /// Shell to install completions for [default: from $SHELL]
+        #[arg(long)]
+        shell: Option<clap_complete::Shell>,
+    },
     /// Common questions and the command that answers each
     ///
     /// With words, only rows whose question or command contains every
@@ -296,6 +319,16 @@ pub const VERSION_LINE: &str = concat!(
 
 pub fn version() -> String {
     VERSION_LINE.to_string()
+}
+
+/// The same facts as fields, for the export files.
+pub fn build_info() -> serde_json::Value {
+    serde_json::json!({
+        "version": env!("CARGO_PKG_VERSION"),
+        "built": env!("PSM_BUILD_DATE"),
+        "commit": env!("PSM_GIT_HASH"),
+        "schema": crate::store::SCHEMA_VERSION,
+    })
 }
 
 #[derive(Subcommand)]
@@ -365,10 +398,24 @@ Examples:
     ///
     /// Nothing is deleted. `psm sessions activate <name|id>` makes a session active again.
     Deactivate,
+    /// Give a session a new name, and optionally a new description
+    #[command(after_help = "\
+Examples:
+  psm sessions rename chrome-153 chrome-old
+  psm sessions rename 2 chrome-old \"before the update\"   name and description
+  psm sessions rename 2 chrome-old \"\"                    clear the description")]
+    Rename {
+        /// Session name or id
+        session: String,
+        /// The new name (the old one is fine); must be free
+        name: String,
+        /// The new description; omitted keeps the old one, "" clears it
+        description: Option<String>,
+    },
     /// Delete inactive sessions older than the given age
     ///
-    /// The active session is never touched. `psm snapshots reset` is the other
-    /// purge: it starts the active session over.
+    /// The active session is never touched. `psm snapshots reset` starts
+    /// the active session over instead.
     Purge {
         /// Age, e.g. 180d
         #[arg(long, value_name = "AGE")]
@@ -469,6 +516,22 @@ pub enum SnapshotsCmd {
     /// Snapshots of the session: number, label, time, process count (the default)
     #[command(short_flag = 'l')]
     List,
+    /// Give a snapshot a new label, and optionally a new description
+    #[command(after_help = format!("\
+Examples:
+  psm snapshots rename 2 after-update
+  psm snapshots rename 2 after-update \"extensions off\"   label and description
+  psm snapshots rename 2 after-update \"\"                  clear the description
+
+{REFERENCES}"))]
+    Rename {
+        /// latest, prev, a number, or a label (not now)
+        snapshot: String,
+        /// The new label (not baseline, latest, prev or now)
+        label: String,
+        /// The new description; omitted keeps the old one, "" clears it
+        description: Option<String>,
+    },
     /// Delete one snapshot [default: latest]; the others keep their numbers
     ///
     /// The baseline (#0) only goes when it is the last snapshot of the

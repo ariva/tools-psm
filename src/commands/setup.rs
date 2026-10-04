@@ -95,14 +95,26 @@ pub fn init(cli: &Cli) -> Result<()> {
         (None, Some(p)) => config::expand_tilde(p),
         (None, None) => config::default_db_path()?,
     };
+    // An unreadable database (another schema version) is reported, not fatal:
+    // the completions below must still be written.
     let db_state = if db_path.exists() {
-        db_contents(&db_path)?
+        db_contents(&db_path).unwrap_or_else(|e| {
+            format!(
+                "cannot be opened: {}",
+                e.to_string().lines().next().unwrap_or_default()
+            )
+        })
     } else {
         Db::open(&db_path)?;
         "created".to_string()
     };
     out(format!("Database:     {} ({db_state})", db_path.display()));
 
+    completions(cli)
+}
+
+/// The completion script for the shell from `--shell` or `$SHELL`.
+fn completions(cli: &Cli) -> Result<()> {
     let Some(shell) = cli.shell_for_init().or_else(clap_complete::Shell::from_env) else {
         out(
             "Completions:  shell not recognised from $SHELL; run `psm completions <shell>` by hand.",
@@ -129,6 +141,47 @@ pub fn init(cli: &Cli) -> Result<()> {
     Ok(())
 }
 
+/// `psm update`: database to the current schema (copy kept), config checked,
+/// completions rewritten. Nothing is deleted.
+pub fn update(cli: &Cli) -> Result<()> {
+    let config_path = match cli.config_path().or_else(config::default_path) {
+        Some(p) => p,
+        None => bail!("cannot locate the config file: HOME is not set; pass --config"),
+    };
+    let cfg = if config_path.exists() {
+        let cfg = config::load(Some(&config_path))?;
+        out(format!("Config:       {} (ok)", config_path.display()));
+        cfg
+    } else {
+        out(format!(
+            "Config:       {} (not found; built-in defaults apply, `psm init` creates it)",
+            config_path.display()
+        ));
+        config::Config::default()
+    };
+    let db_path = match (cli.db_flag(), &cfg.database) {
+        (Some(p), _) => p,
+        (None, Some(p)) => config::expand_tilde(p),
+        (None, None) => config::default_db_path()?,
+    };
+    let db_state = if db_path.exists() {
+        match Db::upgrade(&db_path)? {
+            (from, to) if from == to => {
+                format!("schema {to}, up to date; {}", db_contents(&db_path)?)
+            }
+            (from, to) => format!(
+                "schema {from} -> {to}; copy kept at {}.v{from}.bak; {}",
+                db_path.display(),
+                db_contents(&db_path)?
+            ),
+        }
+    } else {
+        "not created yet; the first `psm new` creates it".to_string()
+    };
+    out(format!("Database:     {} ({db_state})", db_path.display()));
+    completions(cli)
+}
+
 /// `exists, 3 session(s)`
 fn db_contents(path: &std::path::Path) -> Result<String> {
     let sessions = Db::open(path)?.sessions()?.len();
@@ -140,7 +193,19 @@ fn db_contents(path: &std::path::Path) -> Result<String> {
 pub fn database(ctx: &super::Ctx) -> Result<()> {
     let path = ctx.db_path()?;
     let state = if path.exists() {
-        db_contents(&path)?
+        match crate::store::file_schema_version(&path)? {
+            v if v == crate::store::SCHEMA_VERSION => {
+                format!("schema {v}; {}", db_contents(&path)?)
+            }
+            v if v < crate::store::SCHEMA_VERSION => format!(
+                "schema {v}, this psm uses {}; run `psm update`",
+                crate::store::SCHEMA_VERSION
+            ),
+            v => format!(
+                "schema {v}, from a newer psm than this one ({})",
+                crate::store::SCHEMA_VERSION
+            ),
+        }
     } else {
         "not created yet; the first `psm new` creates it".to_string()
     };

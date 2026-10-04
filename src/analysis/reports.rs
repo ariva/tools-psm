@@ -65,21 +65,27 @@ pub fn status(db: &Db, session: &Session, filter: &Filter) -> Result<(String, Va
     let (a, b) = (db.load(first.id)?, db.load(last.id)?);
     let d = Diff::new(&a, &b, filter);
     let delta = b.used() - a.used();
+    // ` (description) (inactive)`: either part only when it applies.
+    let mut suffix = session
+        .description
+        .as_deref()
+        .filter(|d| !d.is_empty())
+        .map(|d| format!(" ({d})"))
+        .unwrap_or_default();
+    if session.inactive_since.is_some() {
+        suffix.push_str(" (inactive)");
+    }
     let text = format!(
         "Session: {}{}\nStarted: {}\nSnapshots: {}\n\n\
-         Baseline: #{}\nLatest:   #{}\n\n\
+         Baseline: {}\nLatest:   {}\n\n\
          Processes:\n  baseline: {:>5}\n  current:  {:>5}\n  new:      {:>5}\n  gone:     {:>5}\n  restarted:{:>5}\n\n\
          Memory:\n  baseline used: {}\n  current used:  {}\n  delta:         {}",
         session.name,
-        if session.inactive_since.is_some() {
-            " (inactive)"
-        } else {
-            ""
-        },
+        suffix,
         session.created,
         snaps.len(),
-        a.id,
-        b.id,
+        a.title(),
+        b.title(),
         d.before.len(),
         d.after.len(),
         d.count(Status::New),
@@ -186,6 +192,7 @@ pub fn timeline_table(db: &Db, session: &Session, filter: &Filter) -> Result<Tab
     if filter.is_narrowing() {
         cols.push(("MATCHED RSS+SWAP", "matched_memory"));
     }
+    cols.push(("DESCRIPTION", "description"));
     let mut t = Table::new(&cols);
     for meta in db.snapshots(session.id, filter.kernel)? {
         let s = db.load(meta.id)?;
@@ -204,6 +211,7 @@ pub fn timeline_table(db: &Db, session: &Session, filter: &Filter) -> Result<Tab
             });
             row.push(Cell::Bytes(matched));
         }
+        row.push(Cell::text(meta.description.unwrap_or_default()));
         t.rows.push(row);
     }
     Ok(t)

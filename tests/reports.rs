@@ -68,6 +68,9 @@ fn reports_and_export() {
     assert!(!private.contains("cmdline") && !private.contains("--type=renderer"));
     let dump = e.json("after", &["sessions", "export"]);
     assert_eq!(dump["snapshots"][1]["meminfo"]["HugePages_Total"], 2);
+    // The writing psm is recorded: version, build date, commit, schema.
+    assert_eq!(dump["psm"]["version"], env!("CARGO_PKG_VERSION"));
+    assert!(dump["psm"]["schema"].as_i64().unwrap() >= 3 && dump["psm"]["commit"].is_string());
     assert_eq!(
         dump["snapshots"][1]["cgroups"][3]["memory_current"],
         500 * MIB

@@ -9,6 +9,9 @@ use super::snapshots::insert_snapshot;
 use super::{Db, NOW, SESSION_SQL, Session, session_row};
 use crate::model::Snapshot;
 
+/// One exported session: name, description, snapshots.
+pub type Export = (String, Option<String>, Vec<Snapshot>);
+
 /// All snapshots of a session with their rows; the session row stays.
 fn delete_snapshots_of(conn: &Connection, session_id: i64) -> Result<()> {
     let snaps = "SELECT id FROM snapshots WHERE session_id = ?1";
@@ -73,7 +76,12 @@ impl Db {
 
     /// Makes the active session inactive, creates a new one, and stores its baseline,
     /// all in one transaction. Returns the session and the baseline's number (0).
-    pub fn init(&self, name: Option<&str>, baseline: &Snapshot) -> Result<(Session, i64)> {
+    pub fn init(
+        &self,
+        name: Option<&str>,
+        description: Option<&str>,
+        baseline: &Snapshot,
+    ) -> Result<(Session, i64)> {
         let tx = self.conn.unchecked_transaction()?;
         let name = match name {
             Some(n) => n.to_string(),
@@ -96,13 +104,35 @@ impl Db {
             [],
         )?;
         tx.execute(
-            &format!("INSERT INTO sessions (name, created_at) VALUES (?1, {NOW})"),
-            [&name],
+            &format!("INSERT INTO sessions (name, created_at, notes) VALUES (?1, {NOW}, ?2)"),
+            params![name, description],
         )?;
         let session_id = tx.last_insert_rowid();
         let snapshot_id = insert_snapshot(&tx, session_id, Some("baseline"), None, baseline)?;
         tx.commit()?;
         Ok((self.session(Some(&name))?, self.seq(snapshot_id)?))
+    }
+
+    /// `psm sessions rename`: names stay unique.
+    pub fn rename_session(
+        &self,
+        session_id: i64,
+        name: &str,
+        description: Option<&str>,
+    ) -> Result<()> {
+        let taken: bool = self.conn.query_row(
+            "SELECT count(*) > 0 FROM sessions WHERE name = ?1 AND id != ?2",
+            params![name, session_id],
+            |r| r.get(0),
+        )?;
+        if taken {
+            bail!("session {name:?} already exists; pick another name");
+        }
+        self.conn.execute(
+            "UPDATE sessions SET name = ?2, notes = COALESCE(?3, notes) WHERE id = ?1",
+            params![session_id, name, description],
+        )?;
+        Ok(())
     }
 
     pub fn deactivate(&self, session_id: i64) -> Result<()> {
@@ -157,10 +187,10 @@ impl Db {
 
     /// Stores exported sessions under their names, keeping the original
     /// timestamps. They arrive inactive, so they never displace the active session.
-    pub fn import(&self, sessions: &[(String, Vec<Snapshot>)]) -> Result<Vec<Session>> {
+    pub fn import(&self, sessions: &[Export]) -> Result<Vec<Session>> {
         let tx = self.conn.unchecked_transaction()?;
         // All names are checked first, so a clash leaves nothing half-imported.
-        for (name, _) in sessions {
+        for (name, _, _) in sessions {
             let taken: bool = tx.query_row(
                 "SELECT count(*) > 0 FROM sessions WHERE name = ?1",
                 [name],
@@ -172,7 +202,7 @@ impl Db {
                 );
             }
         }
-        for (name, snapshots) in sessions {
+        for (name, description, snapshots) in sessions {
             let started = snapshots
                 .first()
                 .map(|s| valid_timestamp(&tx, &s.created_at))
@@ -180,9 +210,9 @@ impl Db {
                 .flatten();
             tx.execute(
                 &format!(
-                    "INSERT INTO sessions (name, created_at, archived_at) VALUES (?1, COALESCE(?2, {NOW}), {NOW})"
+                    "INSERT INTO sessions (name, created_at, archived_at, notes) VALUES (?1, COALESCE(?2, {NOW}), {NOW}, ?3)"
                 ),
-                params![name, started],
+                params![name, started, description],
             )?;
             let session_id = tx.last_insert_rowid();
             for s in snapshots {
@@ -198,7 +228,7 @@ impl Db {
         tx.commit()?;
         sessions
             .iter()
-            .map(|(name, _)| self.session(Some(name)))
+            .map(|(name, _, _)| self.session(Some(name)))
             .collect()
     }
 

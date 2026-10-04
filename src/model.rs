@@ -52,6 +52,8 @@ pub struct Snapshot {
     /// database id; those stay inside `store`. The live snapshot has none.
     pub id: i64,
     pub label: Option<String>,
+    /// Free text given with `psm snap`, shown next to the label.
+    pub description: Option<String>,
     pub created_at: String,
     pub hostname: String,
     pub boot_id: String,
@@ -79,12 +81,20 @@ impl Snapshot {
         self.label.as_deref() == Some("now")
     }
 
+    /// `#1 after-update (what changed)`: number, label, description when present.
     pub fn title(&self) -> String {
-        match &self.label {
-            _ if self.is_live() => "now".into(),
-            Some(l) => format!("#{} {l}", self.id),
-            None => format!("#{}", self.id),
+        if self.is_live() {
+            return "now".into();
         }
+        let mut t = format!("#{}", self.id);
+        if let Some(l) = &self.label {
+            t.push(' ');
+            t.push_str(l);
+        }
+        if let Some(d) = self.description.as_deref().filter(|d| !d.is_empty()) {
+            t.push_str(&format!(" ({d})"));
+        }
+        t
     }
 
     /// System figure, not a sum of per-process RSS (which double-counts shared pages).

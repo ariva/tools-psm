@@ -12,7 +12,8 @@ fn without_cmdline(process: &mut Value, keep: bool) {
     }
 }
 
-pub fn to_json(session: &Session, snapshots: &[Snapshot], cmdline: bool) -> Result<Value> {
+/// One session with its snapshots; the shape `from_json` reads back.
+fn dump(session: &Session, snapshots: &[Snapshot], cmdline: bool) -> Result<Value> {
     let mut snaps = serde_json::to_value(snapshots)?;
     for snap in snaps.as_array_mut().into_iter().flatten() {
         for p in snap["processes"].as_array_mut().into_iter().flatten() {
@@ -22,13 +23,21 @@ pub fn to_json(session: &Session, snapshots: &[Snapshot], cmdline: bool) -> Resu
     Ok(json!({ "session": session, "snapshots": snaps }))
 }
 
-/// `psm sessions export --all`: every session, each as `to_json` writes it.
+/// A session export: the writing psm (version, build, commit, schema) first,
+/// then the session and its snapshots. `from_json` ignores the `psm` block.
+pub fn to_json(session: &Session, snapshots: &[Snapshot], cmdline: bool) -> Result<Value> {
+    let mut v = dump(session, snapshots, cmdline)?;
+    v["psm"] = crate::cli::commands::build_info();
+    Ok(v)
+}
+
+/// `psm sessions export --all`: every session, one `psm` block for the file.
 pub fn all_to_json(sessions: &[(Session, Vec<Snapshot>)], cmdline: bool) -> Result<Value> {
     let dumps = sessions
         .iter()
-        .map(|(s, snaps)| to_json(s, snaps, cmdline))
+        .map(|(s, snaps)| dump(s, snaps, cmdline))
         .collect::<Result<Vec<_>>>()?;
-    Ok(json!({ "sessions": dumps }))
+    Ok(json!({ "psm": crate::cli::commands::build_info(), "sessions": dumps }))
 }
 
 /// One row per process per snapshot. Columns are the `Proc` fields, so a new
@@ -69,6 +78,8 @@ struct Dump {
 #[derive(Deserialize)]
 struct DumpSession {
     name: String,
+    #[serde(default)]
+    description: Option<String>,
 }
 
 #[derive(Deserialize)]
@@ -78,7 +89,7 @@ struct DumpAll {
 
 /// Reads what `to_json` or `all_to_json` wrote: one or more sessions, each
 /// as its name and snapshots.
-pub fn from_json(text: &str) -> Result<Vec<(String, Vec<Snapshot>)>> {
+pub fn from_json(text: &str) -> Result<Vec<crate::store::sessions::Export>> {
     let dumps = match serde_json::from_str::<Dump>(text) {
         Ok(one) => vec![one],
         Err(_) => {
@@ -92,6 +103,6 @@ pub fn from_json(text: &str) -> Result<Vec<(String, Vec<Snapshot>)>> {
     }
     Ok(dumps
         .into_iter()
-        .map(|d| (d.session.name, d.snapshots))
+        .map(|d| (d.session.name, d.session.description, d.snapshots))
         .collect())
 }

@@ -58,6 +58,7 @@ The first snapshot of a session is labelled `baseline`.
 | Reference | Meaning |
 |---|---|
 | `baseline` | first snapshot of the session |
+| `base` | the same, unless a snapshot is labelled `base` |
 | `latest` | newest snapshot of the session |
 | `prev` | the snapshot before the one it is compared with |
 | `now` | the live state; collected for the command, never stored |
@@ -251,6 +252,14 @@ Both accept:
 ```bash
 psm diff [a] [b]
 ```
+
+A second argument is a free-text description, kept with the snapshot and
+shown in `psm list` and in headers: `psm snap "after update" "chrome 154,
+extensions off"` gives `#1 after update (chrome 154, extensions off)`.
+`psm snapshots rename <ref> <label> [description]` changes both later.
+Sessions take a description the same way: `psm new chrome-154 "after the
+update"`, changed with `psm sessions rename`. Both show in the lists
+(last column) and in `psm status`.
 
 | Command | Compares |
 |---|---|
@@ -568,10 +577,13 @@ pattern (`^chrome_crashpad`) to match the name only.
 | `psm snapshots reset` | start the active session over: all its snapshots go, the live state is the new baseline; asks first |
 | `psm sessions delete <name\|id>` | delete one session and its snapshots |
 | `psm snapshots delete [ref]` | delete one snapshot, default `latest`; the others keep their numbers. The last one is replaced by a fresh baseline |
+| `psm snapshots rename <ref> <label> [description]` | new label, and a new description when given (`""` clears it) |
+| `psm sessions rename <name\|id> <new> [description]` | new session name (the old one is fine), and a new description when given (`""` clears it); names stay unique |
 | `psm backup <path>` | consistent copy of the database; refuses to overwrite |
 | `psm sessions reset` | delete **everything**: all sessions and snapshots; asks first |
 | `psm faq [words]` | this guide's quick-answers table, at the command line; words filter it |
 | `psm init` | first-time setup: creates the config file and database if missing, installs shell completions; safe to repeat. `psm init force` deletes both and starts from scratch (asks first) |
+| `psm update` | after installing a new psm: database schema upgraded in place (copy kept), config checked, completions refreshed |
 | `psm config` / `psm --config` | show which config file is used; `--init` creates it with the defaults |
 | `psm completions <shell>` | print a shell completion script; see [Tab completion](#tab-completion) |
 
@@ -591,9 +603,9 @@ psm sessions
 ```
 
 ```text
-ID  NAME        CREATED              SNAPS  STATE
+ID  NAME        CREATED              SNAPS  STATE     DESCRIPTION
  1  chrome-153  2026-09-28 14:17:02      5  inactive
- 2  chrome-154  2026-09-30 08:42:10      4  active
+ 2  chrome-154  2026-09-30 08:42:10      4  active    after the update
 ```
 
 ```bash
@@ -822,7 +834,7 @@ Global options, accepted everywhere:
 | Option | Effect |
 |---|---|
 | `--config [path]` | configuration file; also `PSM_CONFIG`. Alone, with no command: same as `psm config` |
-| `--db [path]` | database file; also `PSM_DB`. Alone, with no command: shows the database in use |
+| `--db [path]` | database file; also `PSM_DB`. Alone, with no command: shows the database in use and its schema version |
 | `--kernel` | include kernel threads |
 | `--json` | machine-readable output |
 | `--proc-root <dir>` | read process data from a directory instead of `/proc` (tests) |
@@ -871,6 +883,13 @@ and command line.
 stored in snapshots either way.
 
 ## Output formats
+
+On a terminal, every command that prints for a person opens with the
+version line (`psm (process snapshot manager) 2.1.5 (built ..., commit
+...)`). With `--json`, for `export`, `sessions export`, `completions`,
+or when standard output is a pipe or a file, it is left out, so data
+stays data. Export files carry the same facts in a `psm` block
+(`version`, `built`, `commit`, `schema`); import ignores it.
 
 - Text tables by default.
 - `--json` on any command. Byte values are raw numbers.
@@ -990,9 +1009,9 @@ path is not readable.
 - User names come from `/etc/passwd`; LDAP/NSS users show as a numeric uid.
 - Programs started from a terminal share that terminal's cgroup, so
   `--group cgroup` cannot separate them.
-- There are no schema migrations. A database written by a different
-  schema version is refused with a message, not converted. Keep its
-  data with the old binary's `psm sessions export`, then `psm sessions reset` and
-  `psm sessions import`.
+- After installing a newer psm, run `psm update`: it upgrades the
+  database in place (a copy is kept next to it), checks the config file
+  and rewrites the completions. Until then an older database is refused
+  with a message; a database from a newer psm is always refused.
 - Not implemented: `watch`, notes, tags, thresholds (`--fail-if-*`),
   HTML reports.

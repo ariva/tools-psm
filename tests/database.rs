@@ -54,13 +54,38 @@ fn database_is_private_versioned_and_kept() {
         .unwrap();
     assert_eq!(orphans, 0);
 
-    // No migrations: a database from another schema version is refused, not converted.
+    // An older schema is refused until `psm update` migrates it in place, keeping a copy.
+    conn.execute_batch("ALTER TABLE snapshots DROP COLUMN description; PRAGMA user_version = 2;")
+        .unwrap();
+    assert!(
+        e.fails("after", &["sessions"])
+            .contains("older psm (schema 2, this one uses 3)")
+    );
+    let o = e.ok("after", &["update"]);
+    assert!(
+        o.contains("schema 2 -> 3") && o.contains("1 session(s)"),
+        "{o}"
+    );
+    let copy = e.db.with_extension("db.v2.bak");
+    assert!(copy.exists(), "a copy of the old file is kept");
+    fs::remove_file(&copy).unwrap();
+    assert_eq!(
+        column(
+            e.json("after", &["sessions", "--json"]).as_array().unwrap(),
+            "name"
+        ),
+        ["current"]
+    );
+    assert!(e.ok("after", &["update"]).contains("up to date"));
+
+    // A newer schema is refused, by `psm update` too.
     conn.pragma_update(None, "user_version", 99).unwrap();
     drop(conn);
     assert!(
         e.fails("after", &["sessions"])
-            .contains("schema 99, expected 2")
+            .contains("newer psm (schema 99, this one uses 3)")
     );
+    assert!(e.fails("after", &["update"]).contains("newer psm"));
 
     // `reset` is the way out of a database this version cannot read.
     assert!(

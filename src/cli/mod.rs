@@ -225,7 +225,7 @@ impl Cli {
     /// The `--shell` given to `psm init`, if any.
     pub fn shell_for_init(&self) -> Option<clap_complete::Shell> {
         match &self.cmd {
-            Some(Cmd::Init { shell, .. }) => *shell,
+            Some(Cmd::Init { shell, .. }) | Some(Cmd::Update { shell }) => *shell,
             _ => None,
         }
     }

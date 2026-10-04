@@ -83,7 +83,10 @@ not a rate.
 | 5.9 | How do I copy one snapshot into another session? | `psm export 2 > s.json`, then `psm sessions activate other` and `psm import s.json` | [export and import](USAGE.md#export-and-import) |
 | 5.10 | Which config file and database are in use? | `psm --config`, `psm --db` | [configuration](USAGE.md#configuration) |
 | 5.11 | How do I get tab completion? | `psm init` | [tab completion](USAGE.md#tab-completion) |
-| 5.12 | Which version is this? | `psm version` | [help](USAGE.md#help) |
+| 5.12 | I installed a new psm and it refuses my database? | `psm update` (upgrades it in place, keeps a copy) | [sessions and housekeeping](USAGE.md#sessions-and-housekeeping) |
+| 5.13 | Which version is this? | `psm version` | [help](USAGE.md#help) |
+| 5.14 | How do I rename a snapshot, or change its description? | `psm snapshots rename 2 new-label "new description"` | [sessions and housekeeping](USAGE.md#sessions-and-housekeeping) |
+| 5.15 | How do I rename a session, or change its description? | `psm sessions rename old-session "new session 1" "new description"` | [sessions and housekeeping](USAGE.md#sessions-and-housekeeping) |
 
 ## Keeping this file and `psm faq` in step
 

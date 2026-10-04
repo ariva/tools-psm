@@ -91,7 +91,7 @@ impl Db {
         let mut stmt = self.conn.prepare(
             "SELECT id, label, datetime(created_at,'localtime'), deep,
                     (SELECT count(*) FROM processes WHERE snapshot_id = snapshots.id AND kthread <= ?2),
-                    seq
+                    seq, description
              FROM snapshots WHERE session_id = ?1 ORDER BY id",
         )?;
         let rows = stmt
@@ -103,6 +103,7 @@ impl Db {
                     deep: r.get(3)?,
                     processes: r.get(4)?,
                     seq: r.get(5)?,
+                    description: r.get(6)?,
                 })
             })?
             .collect::<rusqlite::Result<_>>()?;
@@ -122,6 +123,11 @@ impl Db {
             "baseline" => {
                 pick("SELECT id FROM snapshots WHERE session_id = ?1 ORDER BY id LIMIT 1")?
             }
+            // `base` is a snapshot labelled so if there is one, else the baseline.
+            "base" => match self.by_label(session, "base")? {
+                Some(id) => Some(id),
+                None => pick("SELECT id FROM snapshots WHERE session_id = ?1 ORDER BY id LIMIT 1")?,
+            },
             "latest" => {
                 pick("SELECT id FROM snapshots WHERE session_id = ?1 ORDER BY id DESC LIMIT 1")?
             }
@@ -151,15 +157,7 @@ impl Db {
                 };
                 match by_number {
                     Some(id) => Some(id),
-                    None => self
-                        .conn
-                        .query_row(
-                            "SELECT id FROM snapshots WHERE session_id = ?1 AND label = ?2
-                             ORDER BY id DESC LIMIT 1",
-                            params![session.id, other],
-                            |r| r.get(0),
-                        )
-                        .optional()?,
+                    None => self.by_label(session, other)?,
                 }
             }
         };
@@ -169,6 +167,33 @@ impl Db {
                 session.name
             )
         })
+    }
+
+    /// The newest snapshot of the session with that label.
+    fn by_label(&self, session: &Session, label: &str) -> Result<Option<i64>> {
+        Ok(self
+            .conn
+            .query_row(
+                "SELECT id FROM snapshots WHERE session_id = ?1 AND label = ?2
+                 ORDER BY id DESC LIMIT 1",
+                params![session.id, label],
+                |r| r.get(0),
+            )
+            .optional()?)
+    }
+
+    /// `psm snapshots rename`: a new label, and a new description unless `None`.
+    pub fn rename_snapshot(
+        &self,
+        snapshot_id: i64,
+        label: &str,
+        description: Option<&str>,
+    ) -> Result<()> {
+        self.conn.execute(
+            "UPDATE snapshots SET label = ?2, description = COALESCE(?3, description) WHERE id = ?1",
+            params![snapshot_id, label, description],
+        )?;
+        Ok(())
     }
 
     /// The snapshot of the session taken just before `snapshot_id`.
@@ -222,6 +247,11 @@ impl Db {
             },
         )?;
         snap.id = self.seq(snapshot_id)?;
+        snap.description = self.conn.query_row(
+            "SELECT description FROM snapshots WHERE id = ?1",
+            [snapshot_id],
+            |r| r.get(0),
+        )?;
 
         let mut stmt = self
             .conn
@@ -298,9 +328,9 @@ pub(super) fn insert_snapshot(
         &format!(
             "INSERT INTO snapshots (session_id, seq, created_at, label, hostname, boot_id, kernel_version,
                 collector_uid, deep, clk_tck, uptime_seconds, load_1, load_5, load_15,
-                memory_total, memory_available, swap_total, swap_used)
+                memory_total, memory_available, swap_total, swap_used, description)
              VALUES (?1, (SELECT COALESCE(MAX(seq) + 1, 0) FROM snapshots WHERE session_id = ?1),
-                COALESCE(?17, {NOW}), ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16)"
+                COALESCE(?17, {NOW}), ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?18)"
         ),
         params![
             session_id,
@@ -319,7 +349,8 @@ pub(super) fn insert_snapshot(
             s.memory_available,
             s.swap_total,
             s.swap_used,
-            created_at
+            created_at,
+            s.description
         ],
     )?;
     let id = conn.last_insert_rowid();

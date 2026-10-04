@@ -9,8 +9,6 @@ CREATE TABLE sessions (
 CREATE TABLE snapshots (
     id INTEGER PRIMARY KEY,
     session_id INTEGER NOT NULL,
-    -- number within the session: 0 is the baseline; never reused after a delete
-    seq INTEGER NOT NULL,
     created_at TEXT NOT NULL,
     label TEXT,
 
@@ -33,7 +31,6 @@ CREATE TABLE snapshots (
     swap_total INTEGER,
     swap_used INTEGER,
 
-    UNIQUE(session_id, seq),
     FOREIGN KEY(session_id) REFERENCES sessions(id)
 );
 

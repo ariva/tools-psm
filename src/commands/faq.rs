@@ -183,7 +183,19 @@ const FAQ: &[(&str, &[(&str, &str)])] = &[
                 "psm --config, psm --db",
             ),
             ("How do I get tab completion?", "psm init"),
+            (
+                "I installed a new psm and it refuses my database?",
+                "psm update   (upgrades it in place, keeps a copy)",
+            ),
             ("Which version is this?", "psm version"),
+            (
+                "How do I rename a snapshot, or change its description?",
+                "psm snapshots rename 2 new-label \"new description\"",
+            ),
+            (
+                "How do I rename a session, or change its description?",
+                "psm sessions rename old-session \"new session 1\" \"new description\"",
+            ),
         ],
     ),
 ];

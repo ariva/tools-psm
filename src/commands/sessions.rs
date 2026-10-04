@@ -35,6 +35,7 @@ pub fn snapshots(ctx: &Ctx) -> Result<()> {
         ("CREATED", "created"),
         ("PROCS", "processes"),
         ("DEEP", "deep"),
+        ("DESCRIPTION", "description"),
     ]);
     for s in db.snapshots(session.id, ctx.kernel)? {
         t.rows.push(vec![
@@ -43,6 +44,7 @@ pub fn snapshots(ctx: &Ctx) -> Result<()> {
             Cell::text(s.created),
             Cell::Int(Some(s.processes)),
             Cell::text(if s.deep { "yes" } else { "" }),
+            Cell::text(s.description.unwrap_or_default()),
         ]);
     }
     // The live state closes the list: `>` in the ID column (null in JSON), label `now`.
@@ -62,6 +64,7 @@ pub fn snapshots(ctx: &Ctx) -> Result<()> {
         Cell::text(db.now_local()?),
         Cell::Int(Some(procs as i64)),
         Cell::text(""),
+        Cell::text(""),
     ]);
     ctx.emit(&t, false);
     Ok(())
@@ -74,6 +77,7 @@ pub fn sessions(ctx: &Ctx) -> Result<()> {
         ("CREATED", "created"),
         ("SNAPS", "snapshots"),
         ("STATE", "state"),
+        ("DESCRIPTION", "description"),
     ]);
     for s in ctx.db()?.sessions()? {
         t.rows.push(vec![
@@ -86,6 +90,7 @@ pub fn sessions(ctx: &Ctx) -> Result<()> {
             } else {
                 "active"
             }),
+            Cell::text(s.description.unwrap_or_default()),
         ]);
     }
     ctx.emit(&t, false);
@@ -144,7 +149,7 @@ pub fn export(
 }
 
 /// The export file to import; `-` is standard input.
-fn read_export(file: &Path) -> Result<Vec<(String, Vec<Snapshot>)>> {
+fn read_export(file: &Path) -> Result<Vec<crate::store::sessions::Export>> {
     let text = if file == Path::new("-") {
         std::io::read_to_string(std::io::stdin()).context("cannot read standard input")?
     } else {
@@ -181,6 +186,47 @@ pub fn deactivate(ctx: &Ctx) -> Result<()> {
     out(format!(
         "Session {:?} is now inactive. Its data is kept; `psm sessions activate {}` makes it active again.",
         session.name, session.id
+    ));
+    Ok(())
+}
+
+/// `psm sessions rename <name|id> <new>`.
+pub fn rename(ctx: &Ctx, session: &str, name: &str, description: Option<&str>) -> Result<()> {
+    let db = ctx.db()?;
+    let s = db.session(Some(session))?;
+    db.rename_session(s.id, name, description)?;
+    let after = db.session(Some(name))?;
+    out(format!(
+        "Session {:?} is now {name:?}{}.",
+        s.name,
+        after
+            .description
+            .filter(|d| !d.is_empty())
+            .map(|d| format!(" ({d})"))
+            .unwrap_or_default()
+    ));
+    Ok(())
+}
+
+/// `psm snapshots rename <ref> <label> [description]`.
+pub fn rename_snapshot(
+    ctx: &Ctx,
+    snapshot: &str,
+    label: &str,
+    description: Option<&str>,
+) -> Result<()> {
+    if snapshot == "now" {
+        bail!("`now` is the live state; there is nothing stored to rename");
+    }
+    super::capture::check_label(label)?;
+    let db = ctx.db()?;
+    let session = db.session(None)?;
+    let id = db.resolve(&session, snapshot)?;
+    let before = db.load(id)?.title();
+    db.rename_snapshot(id, label, description)?;
+    out(format!(
+        "Snapshot {before} is now {}.",
+        db.load(id)?.title()
     ));
     Ok(())
 }
@@ -225,7 +271,7 @@ pub fn export_snapshot(
 pub fn import_snapshots(ctx: &Ctx, file: &Path) -> Result<()> {
     let snapshots: Vec<Snapshot> = read_export(file)?
         .into_iter()
-        .flat_map(|(_, snaps)| snaps)
+        .flat_map(|(_, _, snaps)| snaps)
         .collect();
     let db = ctx.db()?;
     let session = db.session(None)?;

@@ -10,11 +10,17 @@ use crate::model::Snapshot;
 use crate::output::out;
 
 /// `psm new`: a session with its baseline.
-pub fn new_session(ctx: &Ctx, name: Option<String>, capture: &CaptureArgs) -> Result<()> {
+pub fn new_session(
+    ctx: &Ctx,
+    name: Option<String>,
+    description: Option<String>,
+    capture: &CaptureArgs,
+) -> Result<()> {
     let db = ctx.db()?;
     let previous = db.active_session()?;
     let snapshot = ctx.capture(capture)?;
-    let (session, id) = db.init(name.as_deref(), &snapshot)?;
+    let description = description.filter(|d| !d.is_empty());
+    let (session, id) = db.init(name.as_deref(), description.as_deref(), &snapshot)?;
     if let Some(p) = previous {
         out(format!("Session {:?} is now inactive.", p.name));
     }
@@ -38,17 +44,20 @@ pub fn new_session(ctx: &Ctx, name: Option<String>, capture: &CaptureArgs) -> Re
     Ok(())
 }
 
-pub fn snap(ctx: &Ctx, label: Option<String>, capture: &CaptureArgs) -> Result<()> {
-    if let Some(l) = label
-        .as_deref()
-        .filter(|l| crate::store::snapshots::RESERVED_LABELS.contains(l))
-    {
-        bail!("{l:?} is a reserved snapshot reference and cannot be used as a label");
+pub fn snap(
+    ctx: &Ctx,
+    label: Option<String>,
+    description: Option<String>,
+    capture: &CaptureArgs,
+) -> Result<()> {
+    if let Some(l) = label.as_deref() {
+        check_label(l)?;
     }
     let db = ctx.db()?;
     let session = db.session(None)?;
     let previous = db.resolve(&session, "latest").ok();
     let mut snapshot = ctx.capture(capture)?;
+    snapshot.description = description.filter(|d| !d.is_empty());
     snapshot.id = db.snap(session.id, label.as_deref(), &snapshot)?;
     snapshot.label = label;
     out(format!(
@@ -59,6 +68,14 @@ pub fn snap(ctx: &Ctx, label: Option<String>, capture: &CaptureArgs) -> Result<(
     ));
     if let Some(prev) = previous {
         super::compare::snap_summary(ctx, &db.load(prev)?, &snapshot)?;
+    }
+    Ok(())
+}
+
+/// Labels with a fixed meaning cannot be given to a snapshot.
+pub fn check_label(label: &str) -> Result<()> {
+    if crate::store::snapshots::RESERVED_LABELS.contains(&label) {
+        bail!("{label:?} is a reserved snapshot reference and cannot be used as a label");
     }
     Ok(())
 }

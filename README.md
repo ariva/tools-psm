@@ -39,8 +39,8 @@ Linux only. The Cargo package is `tool-psm`; the binary is `psm`.
 |---|---|
 | `psm procs` | Processes now, with CPU and memory; `--group`, `--sort`, `--top` |
 | `psm info [N]` | System memory plus the top N by CPU, memory and threads |
-| `psm new [name]` | New session and its baseline; the previous one becomes inactive |
-| `psm snap [label]` | Another snapshot in the active session |
+| `psm new [name] [description]` | New session and its baseline; the previous one becomes inactive |
+| `psm snap [label] [description]` | Another snapshot in the active session |
 | `psm` / `psm status` | Active session summary |
 | `psm diff [a] [b]` | Changes between two snapshots; default baseline -> now |
 | `psm report <kind>` | `memory`, `growth`, `processes`, `new`, `gone`, `cpu`, `meminfo`, `timeline` |
@@ -48,14 +48,15 @@ Linux only. The Cargo package is `tool-psm`; the binary is `psm`.
 | `psm list` (= `psm snapshots`) / `psm sessions` | What is stored |
 | `psm sessions compare <a> <b>` | Two sessions, by program |
 | `psm sessions activate <name\|id>` / `psm sessions deactivate` | Make a session active; leave none active |
-| `psm sessions export` / `import <file>` / `delete <name\|id>` | Dump one as JSON or CSV; load a JSON dump back; delete one |
+| `psm sessions export` / `import <file>` / `delete <name\|id>` / `rename <name\|id> <new> [description]` | Dump one as JSON or CSV; load a JSON dump back; delete one; rename or describe one |
 | `psm sessions purge --older-than <age>` | Delete inactive sessions older than that |
 | `psm export [ref]` / `import <file>` | Dump one snapshot (`--all`: the whole session), add from a dump |
-| `psm snapshots delete [ref]` / `reset` | Delete one snapshot (default the latest); start the session over with a new baseline, asks first |
+| `psm snapshots delete [ref]` / `rename` / `reset` | Delete one snapshot (default the latest); relabel one; start the session over with a new baseline, asks first |
 | `psm backup <path>` | Copy the database |
 | `psm sessions reset` | Delete **all** sessions and snapshots; asks first |
 | `psm faq [words]` | Common questions and the command that answers each; words filter the list |
 | `psm init` | First-time setup: config file, database, shell completions; `init force` starts from scratch |
+| `psm update` | After a new psm: upgrade the database in place, check the config, refresh completions |
 | `psm config` / `psm --config` / `psm --db` | Which config file and database are used; `config --init` creates the file |
 | `psm completions <shell>` | Shell completion script, for other shells or machines |
 

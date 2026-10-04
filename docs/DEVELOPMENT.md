@@ -16,7 +16,7 @@ just test             # tests only
 just fmt              # format
 just run list --top 10        # run from source
 just smoke            # new -> snap -> diff on this machine, throwaway database
-just install          # cargo install --path . --force --locked  ->  ~/.cargo/bin/psm
+just install          # cargo install --path . --force --locked -> ~/.cargo/bin/psm, then psm update
 just fixtures         # regenerate tests/fixtures/proc
 
 just release-static   # static x86_64 binary (musl); needs: rustup target add x86_64-unknown-linux-musl, apt install musl-tools
@@ -103,11 +103,10 @@ stands in for `EACCES`), two CPU readings apart in time (tests use
    (`tests/common/` has the helpers: `Env::ok`, `Env::json`, `Env::fails`).
 4. Describe it in `docs/USAGE.md` and the README command list.
 
-Adding a collected field: `model::Proc`, `collect/procfs.rs`,
-`store/schema.sql`, and the insert and load statements in
-`store/snapshots.rs`. Changing the schema means raising
-`SCHEMA_VERSION` in `store/mod.rs`; existing databases are then
-refused, not migrated.
+Adding a collected field: `model::Proc`, `collect/procfs.rs`, a new
+`store/migrations/NNNN_name.sql` (never edit an existing one) listed in
+`MIGRATIONS` in `store/mod.rs`, and the insert and load statements in
+`store/snapshots.rs`. `psm update` brings existing databases along.
 
 ## Troubleshooting
 

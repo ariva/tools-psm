@@ -74,7 +74,7 @@ Nothing below `commands` knows about clap.
 | `store/mod.rs` | `Db`: opening the file, schema creation and version check, backup. |
 | `store/sessions.rs` | Active session, switching, deactivating, importing, purging, deleting. |
 | `store/snapshots.rs` | Storing, listing, loading, deleting, appending snapshots; resolving `baseline`/`latest`/`prev`/number/label. |
-| `store/schema.sql` | The schema, embedded in the binary. |
+| `store/migrations/` | The schema as numbered SQL steps, embedded in the binary; `store/mod.rs` applies them. |
 | `analysis/group.rs` | `Grouper`: the group keys, application roots, the launcher list. |
 | `analysis/diff.rs` | Classifies processes between two snapshots and builds the comparison tables. |
 | `analysis/view.rs` | The table of one snapshot: filter, group, sort, cut; `%CPU` formulas. |
@@ -127,7 +127,7 @@ SQLite, one file, five tables:
 
 ```text
 sessions            id, name (unique), created_at, archived_at
-snapshots           id, session_id, seq, label, system figures,
+snapshots           id, session_id, seq, label, description, system figures,
                     collector_uid, deep, clk_tck, uptime_seconds
 processes           one row per process per snapshot
 snapshot_meminfo    every /proc/meminfo key per snapshot
@@ -157,19 +157,25 @@ stay inside `store`; `Snapshot::id` is the number. The live state
 - **SQLite writes and formats the timestamps** (`strftime('now')` in
   UTC, `datetime(..., 'localtime')` for display). There is no time
   crate in the dependency tree.
-- **No migrations.** The schema version is stored in
-  `PRAGMA user_version`. A file with a different version is refused
-  with a message; the old binary can still read it.
+- **The schema is its migrations.** `store/migrations/NNNN_*.sql` are
+  embedded in order; a fresh database runs them all, `psm update` runs
+  the ones a file is missing (after a `VACUUM INTO` copy), so the two
+  paths cannot drift. `PRAGMA user_version` is the last applied number.
+  `Db::open` refuses an older file with a pointer to `psm update` and a
+  newer one outright; it never migrates on its own.
 - **The file is created `0600`** before SQLite opens it, because
   command lines can hold secrets.
 - **Process age is not stored.** It is derived from the snapshot's
   `uptime_seconds` and `clk_tck` and the process's `start_time`.
 - **`backup` is `VACUUM INTO`**: a consistent copy in one statement.
 - **`reset` deletes the file**, not the rows. That also works when the
-  file cannot be opened (another schema version), which makes `reset`
-  the way out of the no-migrations rule. It is the only command that
+  file cannot be opened (a newer schema). It is the only command that
   asks for confirmation; the answer is read from standard input, so a
   script without `--yes` gets "no".
+- **The version line comes first.** `commands::run` prints it before
+  any command a person reads, only when stdout is a terminal and the
+  command is not data (`--json`, `export`, `completions`, `help`,
+  `version`). Export files record the writing psm in a `psm` block.
 - **Export and import are one format.** `Snapshot` and `Proc` derive
   both `Serialize` and `Deserialize`, so the JSON dump is the model
   itself and a new field travels both ways without extra code. Import
@@ -314,4 +320,4 @@ Marked in the code with a `ponytail:` comment.
 ## Not built
 
 `watch` (interval snapshots), notes and tags, a per-program timeline,
-thresholds with exit code `1`, HTML reports, schema migrations.
+thresholds with exit code `1`, HTML reports.
