@@ -15,7 +15,7 @@ fn faq_lists_questions_and_commands() {
     assert!(rows.as_array().unwrap().len() >= 40);
     assert_eq!(rows[0]["number"], "1.1");
     assert_eq!(rows[0]["section"], "Generic");
-    assert_eq!(rows[0]["command"], "psm info");
+    assert_eq!(rows[0]["command"], "psm info   (live; nothing is stored)");
 
     // Words filter the rows, case-insensitively; all must match; numbers stay stable.
     let what = e.json("before", &["faq", "WHAT", "--json"]);

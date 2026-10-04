@@ -12,7 +12,7 @@ word given must match), and `psm faq 5.3` picks one row by number.
 
 | # | Question | Command | More |
 |---|---|---|---|
-| 1.1 | What is using the machine right now? | `psm info` | [info](USAGE.md#psm-info-n) |
+| 1.1 | What is using the machine right now? | `psm info` (live; nothing is stored) | [info](USAGE.md#psm-info-n) |
 | 1.2 | Which application uses the most memory, helpers included? | `psm procs --group app` | [grouping](USAGE.md#grouping) |
 | 1.3 | What changed since I started? | `psm diff` | [a typical session](USAGE.md#a-typical-session) |
 | 1.4 | What changed since my last snapshot? | `psm diff prev` | [comparing](USAGE.md#comparing) |

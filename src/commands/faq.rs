@@ -10,7 +10,10 @@ const FAQ: &[(&str, &[(&str, &str)])] = &[
     (
         "Generic",
         &[
-            ("What is using the machine right now?", "psm info"),
+            (
+                "What is using the machine right now?",
+                "psm info   (live; nothing is stored)",
+            ),
             (
                 "Which application uses the most memory, helpers included?",
                 "psm procs --group app",

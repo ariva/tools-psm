@@ -7,7 +7,7 @@ moments you choose and shows what changed between them.
 
 | Question | Command | Example |
 |---|---|---|
-| What is using the machine right now? | `psm info` | [info](#psm-info-n) |
+| What is using the machine right now? | `psm info` (live; nothing is stored) | [info](#psm-info-n) |
 | Which application uses the most memory, helpers included? | `psm procs --group app` | [grouping](#grouping) |
 | What changed since I started? | `psm diff` | [a typical session](#a-typical-session) |
 | What changed since my last snapshot? | `psm diff prev` | [comparing](#comparing) |
@@ -210,7 +210,8 @@ The `SWAP` and `IO` columns appear when you sort by them.
 
 ### `psm info [N]`
 
-System memory, then the top N (default 5) per metric. One collection
+Live view, like `procs`: system memory information, then the top N
+(default 5) per metric. Nothing is stored; `psm snap` keeps a state. One collection
 pass feeds every table, so they describe the same moment.
 
 ```bash

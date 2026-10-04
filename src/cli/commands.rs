@@ -67,10 +67,10 @@ Examples:
         #[command(subcommand)]
         cmd: Option<ProcsCmd>,
     },
-    /// System memory plus the top consumers per metric
+    /// Live view: system memory information plus the top consumers per metric; nothing is stored
     #[command(after_help = "\
 Examples:
-  psm info                  top 5 by CPU, memory and threads
+  psm info                  now: top 5 by CPU, memory and threads
   psm info 10 --by cpu,mem  top 10, two tables
   psm info --top 10         the same; --top wins over a number
   psm info --group name     rank programs instead of single processes")]
