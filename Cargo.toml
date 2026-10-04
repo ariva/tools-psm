@@ -1,6 +1,6 @@
 [package]
 name = "tool-psm"
-version = "2.1.6"
+version = "2.2.0"
 edition = "2024"
 authors = ["Arunas Ivanauskas <arunas.work.hg@gmail.com>"]
 description = "psm (process snapshot manager): named snapshots of the Linux process table and before/after comparison of memory, CPU and process changes"
