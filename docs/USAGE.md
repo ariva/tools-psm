@@ -216,6 +216,7 @@ pass feeds every table, so they describe the same moment.
 ```bash
 psm info
 psm info 10 --by cpu,mem
+psm info --top 10                 # the same as the number; wins when both are given
 psm info --group name
 ```
 

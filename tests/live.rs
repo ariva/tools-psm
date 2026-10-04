@@ -80,6 +80,21 @@ fn list_reads_the_process_table() {
     );
 
     let info = e.json("before", &["info", "2", "--interval", "0", "--json"]);
+    // `--top` is the same as the number and wins over it.
+    assert_eq!(
+        e.json(
+            "before",
+            &["info", "--top", "2", "--interval", "0", "--json"]
+        ),
+        info
+    );
+    assert_eq!(
+        e.json(
+            "before",
+            &["info", "5", "--top", "2", "--interval", "0", "--json"]
+        ),
+        info
+    );
     assert_eq!(
         info["system"]["memory_used"],
         (16777216i64 - 12000000) * 1024

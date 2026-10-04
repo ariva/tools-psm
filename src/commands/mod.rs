@@ -358,12 +358,21 @@ pub fn run(cli: Cli) -> Result<()> {
         } => views::show(&ctx, &snapshot, &view),
         Cmd::Info {
             n,
+            top,
             by,
             group,
             interval,
             deep,
             filter,
-        } => views::info(&ctx, n, &by, &group, &interval, deep, &filter),
+        } => views::info(
+            &ctx,
+            top.unwrap_or(n),
+            &by,
+            &group,
+            &interval,
+            deep,
+            &filter,
+        ),
         Cmd::New {
             name,
             description,

@@ -72,12 +72,16 @@ Examples:
 Examples:
   psm info                  top 5 by CPU, memory and threads
   psm info 10 --by cpu,mem  top 10, two tables
+  psm info --top 10         the same; --top wins over a number
   psm info --group name     rank programs instead of single processes")]
     #[command(short_flag = 'i')]
     Info {
         /// Rows per table
         #[arg(default_value_t = 5)]
         n: usize,
+        /// Rows per table, the same as the number; wins when both are given
+        #[arg(long, value_name = "N")]
+        top: Option<usize>,
         /// Tables to show, comma-separated
         #[arg(long, value_delimiter = ',', default_value = "cpu,mem,threads", value_parser = info_tables())]
         by: Vec<String>,
