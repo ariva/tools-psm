@@ -18,7 +18,10 @@ const FAQ: &[(&str, &[(&str, &str)])] = &[
                 "Which application uses the most memory, helpers included?",
                 "psm procs --group app",
             ),
-            ("What changed since I started?", "psm diff"),
+            (
+                "What changed since I started?",
+                "psm diff   (baseline -> now; psm new takes the baseline)",
+            ),
             ("What changed since my last snapshot?", "psm diff prev"),
             ("Who moved memory the most?", "psm diff --memory"),
             (

@@ -9,7 +9,7 @@ moments you choose and shows what changed between them.
 |---|---|---|
 | What is using the machine right now? | `psm info` (live; nothing is stored) | [info](#psm-info-n) |
 | Which application uses the most memory, helpers included? | `psm procs --group app` | [grouping](#grouping) |
-| What changed since I started? | `psm diff` | [a typical session](#a-typical-session) |
+| What changed since I started? | `psm diff` (baseline -> now; `psm new` takes the baseline) | [a typical session](#a-typical-session) |
 | What changed since my last snapshot? | `psm diff prev` | [comparing](#comparing) |
 | Who moved memory the most? | `psm diff --memory` | [memory impact](#memory-impact) |
 | Memory went down but no process grew. Where did it go? | `psm report meminfo` | [reports](#reports) |
