@@ -1035,5 +1035,5 @@ path is not readable.
   database in place (a copy is kept next to it), checks the config file
   and rewrites the completions. Until then an older database is refused
   with a message; a database from a newer psm is always refused.
-- Not implemented: `watch`, notes, tags, thresholds (`--fail-if-*`),
+- Not implemented: notes, tags, thresholds (`--fail-if-*`),
   HTML reports.
