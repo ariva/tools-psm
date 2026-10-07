@@ -68,6 +68,7 @@ not a rate.
 | 4.4 | How do I keep passwords out of the database? | `psm snap --no-cmdline` | [capturing](USAGE.md#capturing) |
 | 4.5 | How do I include kernel threads? | add `--kernel` | [reading the numbers](USAGE.md#reading-the-numbers) |
 | 4.6 | How do I leave noise out? | `--exclude-regex '^chrome_crashpad'` | [narrowing further](USAGE.md#narrowing-further) |
+| 4.7 | How do I send a diff to a server? | `psm diff --json \| curl -d @- $URL` | [sending output](USAGE.md#sending-output-to-a-server) |
 
 ## 5. Housekeeping
 

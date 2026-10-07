@@ -153,6 +153,10 @@ const FAQ: &[(&str, &[(&str, &str)])] = &[
                 "How do I leave noise out?",
                 "--exclude-regex '^chrome_crashpad'",
             ),
+            (
+                "How do I send a diff to a server?",
+                "psm diff --json | curl -d @- $URL",
+            ),
         ],
     ),
     (

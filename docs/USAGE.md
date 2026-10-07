@@ -963,6 +963,24 @@ Exit codes: `0` success, `2` usage error or failure. `1` is reserved
 for thresholds, which do not exist yet. A diff that finds changes still
 exits `0`.
 
+### Sending output to a server
+
+There is no built-in upload; the JSON goes to any HTTP endpoint with
+`curl`, and the version line stays out because stdout is a pipe:
+
+```bash
+psm diff --json | curl -sS -X POST -H 'Content-Type: application/json' -d @- "$URL"
+psm report trend --json | curl -sS -X POST -H "Authorization: Bearer $TOKEN" -d @- "$URL"
+psm sessions export --format csv | curl -sS -X POST -H 'Content-Type: text/csv' --data-binary @- "$URL"
+```
+
+The export carries `hostname`, the session and the `psm` block, so
+documents from several machines can be told apart; a `diff` or `report`
+does not, so add them yourself (`-H "X-Host: $(hostname)"`). `psm snap`
+prints its digest as text only; after a snapshot, send
+`psm diff prev --json`. A `--watch --json` run prints one document per
+round, so a `while read` loop over it posts each round as it comes.
+
 ## Configuration
 
 Optional. Exactly one file is read, the first of:
