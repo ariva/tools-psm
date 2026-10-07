@@ -9,7 +9,11 @@ fn faq_lists_questions_and_commands() {
     let e = Env::new("faq");
     let text = e.ok("before", &["faq"]);
     assert!(text.starts_with("1. Generic\n#"), "{text}");
-    assert!(text.contains("\n\n2. Finding things now\n") && text.contains("\n5. Housekeeping\n"));
+    assert!(
+        text.contains("\n\n2. Finding things now\n")
+            && text.contains("\n3. One process\n")
+            && text.contains("\n6. Housekeeping\n")
+    );
     assert!(text.contains("psm diff prev") && text.contains("Who started this process?"));
     let rows = e.json("before", &["faq", "--json"]);
     assert!(rows.as_array().unwrap().len() >= 40);
@@ -34,7 +38,7 @@ fn faq_lists_questions_and_commands() {
     assert_eq!(two[0]["command"], "psm sessions compare old new --name X");
     let swapped = e.json("before", &["faq", "swapped", "--json"]);
     assert_eq!(swapped[0]["number"], "2.1");
-    let by_number = e.ok("before", &["faq", "5.4"]);
+    let by_number = e.ok("before", &["faq", "6.4"]);
     assert!(
         by_number.contains("sessions purge") && !by_number.contains("psm sessions reset"),
         "{by_number}"
@@ -136,7 +140,7 @@ fn commands_have_flag_forms() {
             .contains("unexpected argument"),
         "double dashes are options, not commands"
     );
-    assert!(e.ok("before", &["-q", "5.4"]).contains("sessions purge"));
+    assert!(e.ok("before", &["-q", "6.4"]).contains("sessions purge"));
     // procs: list is the default, show the other subcommand; both have flag forms.
     assert_eq!(
         e.ok(
@@ -173,7 +177,7 @@ fn commands_have_flag_forms() {
         help.contains("--json") && !diff.contains("--json"),
         "{diff}"
     );
-    assert!(e.ok("before", &["faq", "5.4", "--json"]).starts_with('['));
+    assert!(e.ok("before", &["faq", "6.4", "--json"]).starts_with('['));
     assert_eq!(
         e.ok("before", &["-h", "diff"]),
         e.ok("before", &["diff", "-h"])

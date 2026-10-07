@@ -71,6 +71,21 @@ Examples:
         #[command(subcommand)]
         cmd: Option<ProcsCmd>,
     },
+    /// One process on one screen: what it is, where it comes from, its memory, and its history in the session
+    #[command(after_help = format!("\
+Examples:
+  psm pid 4041081             the process now: name, exe, command line, parent chain, app, cgroup, memory, CPU, I/O
+  psm pid 4041081 baseline    the same process as it was in a stored snapshot
+  psm pid 4041081 --json      every field, plus its row from each snapshot of the session
+
+{REFERENCES}"))]
+    Pid {
+        /// Process id
+        pid: i64,
+        /// baseline, latest, prev, now, a number, or a label
+        #[arg(default_value = "now")]
+        snapshot: String,
+    },
     /// Live view: system memory information plus the top consumers per metric; nothing is stored
     #[command(after_help = "\
 Examples:

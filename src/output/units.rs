@@ -65,6 +65,29 @@ pub fn parse_size(s: &str) -> Result<i64> {
     Ok((n * mult as f64) as i64)
 }
 
+/// `3d 4h`, `2h 13m`, `12m 5s`, `45s`: the two largest units that apply.
+pub fn human_duration(seconds: f64) -> String {
+    let total = seconds.max(0.0).round() as i64;
+    let parts = [
+        (total / 86400, "d"),
+        (total / 3600 % 24, "h"),
+        (total / 60 % 60, "m"),
+        (total % 60, "s"),
+    ];
+    let first = parts.iter().position(|(n, _)| *n > 0).unwrap_or(3);
+    let shown: Vec<String> = parts[first..]
+        .iter()
+        .take(2)
+        .filter(|(n, _)| *n > 0)
+        .map(|(n, u)| format!("{n}{u}"))
+        .collect();
+    if shown.is_empty() {
+        "0s".into()
+    } else {
+        shown.join(" ")
+    }
+}
+
 /// `500ms`, `10s`, `5m`, `2h`, `180d`; a bare number is seconds.
 pub fn parse_duration(s: &str) -> Result<Duration> {
     let t = s.trim();
@@ -108,6 +131,13 @@ mod tests {
             Duration::from_secs(180 * 86400)
         );
         assert_eq!(parse_duration("0").unwrap(), Duration::ZERO);
+        assert_eq!(human_duration(45.0), "45s");
+        assert_eq!(human_duration(725.0), "12m 5s");
+        assert_eq!(human_duration(2.0 * 3600.0 + 13.0 * 60.0 + 7.0), "2h 13m");
+        assert_eq!(human_duration(3.0 * 86400.0 + 4.0 * 3600.0), "3d 4h");
+        assert_eq!(human_duration(3600.0), "1h");
+        assert_eq!(human_duration(60.0), "1m");
+        assert_eq!(human_duration(0.0), "0s");
         assert!(parse_duration("soon").is_err());
     }
 

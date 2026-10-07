@@ -9,7 +9,7 @@ use std::io::Write;
 use serde_json::Value;
 
 pub use table::{Cell, Table};
-pub use units::{human, human_delta, parse_duration, parse_size, set_units};
+pub use units::{human, human_delta, human_duration, parse_duration, parse_size, set_units};
 
 /// Prints a line; a closed pipe (`psm procs | head`) ends the program quietly.
 pub fn out(s: impl AsRef<str>) {

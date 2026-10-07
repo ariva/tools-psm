@@ -208,7 +208,7 @@ const COMMAND_GROUPS: &[(&str, &[&str])] = &[
     (
         "Commands:",
         &[
-            "procs", "info", "new", "snap", "list", "diff", "report", "status",
+            "procs", "pid", "info", "new", "snap", "list", "diff", "report", "status",
         ],
     ),
     (
@@ -450,7 +450,8 @@ fn watchable(cmd: &Cmd) -> bool {
         Cmd::Procs {
             cmd: Some(ProcsCmd::Show { snapshot, .. }),
             ..
-        } => snapshot == "now",
+        }
+        | Cmd::Pid { snapshot, .. } => snapshot == "now",
         Cmd::Diff(args) | Cmd::Report { diff: args, .. } => live_side(args),
         _ => false,
     }
@@ -471,6 +472,7 @@ fn dispatch(ctx: &Ctx, cmd: Cmd) -> Result<()> {
             cmd: Some(ProcsCmd::Show { snapshot, view }),
             ..
         } => views::show(ctx, &snapshot, &view),
+        Cmd::Pid { pid, snapshot } => views::pid(ctx, pid, &snapshot),
         Cmd::Info {
             n,
             top,

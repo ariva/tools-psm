@@ -29,30 +29,6 @@ const FAQ: &[(&str, &[(&str, &str)])] = &[
                 "psm report meminfo",
             ),
             (
-                "What is this process, and where does it come from?",
-                "psm procs --name X --group exe   (then parent, cmdline)",
-            ),
-            (
-                "Who started this process?",
-                "psm procs --name X --group parent",
-            ),
-            (
-                "Which part of an application grew?",
-                "psm diff --name X --group parent --memory",
-            ),
-            (
-                "How did one application change?",
-                "psm diff --name X --memory",
-            ),
-            (
-                "Is it still growing?",
-                "psm report trend   (--name X for one program)",
-            ),
-            (
-                "Which of its processes is busy right now?",
-                "psm procs --name X --sort cpu --top 3",
-            ),
-            (
                 "Did the new version use more memory?",
                 "psm sessions compare old new --name X",
             ),
@@ -102,6 +78,23 @@ const FAQ: &[(&str, &[(&str, &str)])] = &[
                 "How do I keep a live view refreshing?",
                 "psm info --watch   (every 10s; --watch 30 for 30s; also procs, diff)",
             ),
+        ],
+    ),
+    (
+        "One process",
+        &[
+            (
+                "What is this process, and where does it come from?",
+                "psm pid 4041081   (one screen: exe, command line, parents, app, cgroup, memory)",
+            ),
+            (
+                "Which binary, parent and scripts, for a whole family of processes?",
+                "psm procs --name X --group exe   (then parent, cmdline)",
+            ),
+            (
+                "Who started this process?",
+                "psm procs --name X --group parent",
+            ),
             (
                 "How do I find a process by any word I know about it?",
                 "psm procs tsserver   (pid, name, path or command line)",
@@ -109,6 +102,30 @@ const FAQ: &[(&str, &[(&str, &str)])] = &[
             (
                 "How do I look at one or two known pids?",
                 "psm procs --pid 4041081,4041135",
+            ),
+            (
+                "Which of its processes is busy right now?",
+                "psm procs --name X --sort cpu --top 3",
+            ),
+            (
+                "How did one application change?",
+                "psm diff --name X --memory",
+            ),
+            (
+                "Which part of an application grew?",
+                "psm diff --name X --group parent --memory",
+            ),
+            (
+                "Is it still growing?",
+                "psm report trend   (--name X for one program)",
+            ),
+            (
+                "What did it look like earlier in the session?",
+                "psm pid 4041081 baseline   (any snapshot reference)",
+            ),
+            (
+                "It has exited; what was it?",
+                "psm pid 4041081 latest   (or the number of a snapshot that has it)",
             ),
         ],
     ),

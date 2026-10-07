@@ -30,7 +30,7 @@ the same list at the command line.
 
 - [Concepts](#concepts)
 - [A typical session](#a-typical-session)
-- [Live views: `list`, `info`, `--watch`](#live-views)
+- [Live views: `list`, `pid`, `info`, `--watch`](#live-views)
 - [Capturing: `new`, `snap`](#capturing)
 - [Comparing: `diff`](#comparing)
 - [Reports](#reports)
@@ -211,6 +211,47 @@ parents, with their pid in its own column.
 | `--csv` | CSV instead of a table |
 
 The `SWAP` and `IO` columns appear when you sort by them.
+
+### `psm pid <pid> [ref]`
+
+One process on one screen, from the live state (`now`, the default) or
+from a stored snapshot (`psm pid 600 baseline`): what it is, where it
+comes from, what it holds, and then its row in every snapshot of the
+active session where the same instance (pid and start time, same boot)
+appears.
+
+```bash
+psm pid 600
+```
+
+```text
+PID 600  node   state S   user alice (1000)   nice 0   threads 11
+Exe:      /usr/bin/node
+Cmdline:  node server.js
+Chain:    1 systemd > 100 code > 600 node   app: code
+Cgroup:   /user.slice/app-code.scope
+Age:      1h 2m   (as of now)
+Memory:   RSS 72 MiB (anon 60 MiB, file 12 MiB, shmem 0 B)   swap 0 B   VSZ 288 MiB
+CPU:      3s total (3s user, 0s system)   0.1 % of one core over its life   (psm procs shows the last 500ms)
+I/O:      read 2 MiB   written 5 MiB
+
+In session chrome-154:
+ID  LABEL     TIME                    RSS  SWAP  THR  %CPU
+ 1  after     2026-09-30 09:40:02  70 MiB   0 B   11   0.1
+ 2  one-hour  2026-09-30 10:41:17  72 MiB   0 B   11   0.1
+```
+
+`Chain` is every ancestor up to init; `app` is where `--group app`
+would file it. `Age` is as of the snapshot shown. `CPU` is the time the
+process has consumed so far (what `ps -o time` shows), split into its
+own code and the kernel working for it, and then that total as an
+average rate over its life; the live `%CPU` of `psm procs` is the last
+500 ms instead. `--json` has `total_seconds`, `user_seconds`,
+`system_seconds` and `lifetime_percent`. A `--deep` snapshot adds a
+`PSS`/`USS` line. `--json` gives the same fields and the history
+as an array; `--watch` repeats the live card. A pid that is not in the
+chosen snapshot is an error; `psm pid <pid> latest` looks in the last
+stored one, for a process that has already exited.
 
 ### `psm info [N]`
 
@@ -400,7 +441,9 @@ The numbers below are made up for illustration; the layout is what
 ### What is this process, and where does it come from?
 
 A diff shows a program called `MainThread` that grew by 1.5 GiB, and the
-name says nothing. Group the same processes three ways.
+name says nothing. For one pid, `psm pid 4038` answers on one screen:
+binary, command line, parent chain, application, cgroup. For the whole
+family, group the same processes three ways.
 
 Which binary is it?
 
