@@ -60,10 +60,93 @@ pub fn diff(ctx: &Ctx, args: &DiffArgs) -> Result<()> {
     }
     let db = ctx.db()?;
     let (a, b) = pair(ctx, &db, args)?;
+    if args.brief {
+        return brief(ctx, &a, &b, args);
+    }
     compare(ctx, &a, &b, args, &sections)
 }
 
+/// Rows of the `--brief` line when `--top` is not given.
+const BRIEF_MOVERS: usize = 3;
+
+/// `psm diff --brief`: the whole diff on one line, for logs and messages.
+fn brief(ctx: &Ctx, a: &Snapshot, b: &Snapshot, args: &DiffArgs) -> Result<()> {
+    let mut s = diff_settings(ctx, a, b, args)?;
+    s.top = Some(args.top.unwrap_or(BRIEF_MOVERS));
+    let d = Diff::new(a, b, &s.filter);
+    if !d.same_boot {
+        s.group.get_or_insert_with(|| "name".into());
+    }
+    let grouper = s
+        .group
+        .as_deref()
+        .map(|kind| Grouper::new(kind, &[a, b]))
+        .transpose()?;
+    let (mut rows, label) = match &grouper {
+        Some(g) => d.group_impact(s.metric, g),
+        None => (d.impact(s.metric), s.metric.label()),
+    };
+    let net: i64 = rows.iter().map(|r| r.delta).sum();
+    rows.retain(|r| r.delta.abs() >= s.min_delta);
+    rows.truncate(s.top.unwrap_or(BRIEF_MOVERS));
+    let display = |name: &str| {
+        grouper
+            .as_ref()
+            .map_or(name.to_string(), |g| g.display(name))
+    };
+    if ctx.json {
+        let side = |s: &Snapshot| json!({ "id": (!s.is_live()).then_some(s.id), "label": s.label });
+        print_json(&json!({
+            "from": side(a),
+            "to": side(b),
+            "same_boot": d.same_boot,
+            "processes": {
+                "before": d.before.len(),
+                "after": d.after.len(),
+                "new": d.count(Status::New),
+                "gone": d.count(Status::Gone),
+                "restarted": d.count(Status::Restarted),
+            },
+            "metric": label,
+            "net_change": net,
+            "top": rows.iter().map(|r| json!({
+                "name": display(&r.name), "pid": r.pid, "status": r.status, "delta": r.delta,
+            })).collect::<Vec<_>>(),
+        }));
+        return Ok(());
+    }
+    let movers = if rows.is_empty() {
+        format!("no change above {}", human(s.min_delta))
+    } else {
+        rows.iter()
+            .map(|r| format!("{} {}", display(&r.name), human_delta(r.delta)))
+            .collect::<Vec<_>>()
+            .join(", ")
+    };
+    out(format!(
+        "{} -> {}: {} -> {} processes, new {}, gone {}, restarted {}, net {} ({}){}; top: {movers}",
+        a.title(),
+        b.title(),
+        d.before.len(),
+        d.after.len(),
+        d.count(Status::New),
+        d.count(Status::Gone),
+        d.count(Status::Restarted),
+        human_delta(net),
+        label,
+        if d.same_boot {
+            ""
+        } else {
+            ", different boots: programs compared"
+        }
+    ));
+    Ok(())
+}
+
 pub fn report(ctx: &Ctx, kind: ReportKind, args: &DiffArgs) -> Result<()> {
+    if args.brief {
+        bail!("--brief is for `psm diff`; a report is already one table");
+    }
     let db = ctx.db()?;
     let section = match kind {
         ReportKind::Timeline => {

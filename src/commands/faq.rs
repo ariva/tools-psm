@@ -152,6 +152,10 @@ const FAQ: &[(&str, &[(&str, &str)])] = &[
                 "What was in a snapshot I took earlier?",
                 "psm list, then psm procs show <n>",
             ),
+            (
+                "How do I get the diff as one line for a log or a commit message?",
+                "psm diff --brief",
+            ),
         ],
     ),
     (

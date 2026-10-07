@@ -342,6 +342,23 @@ restarted, memory impact, the programs whose process count changed, and
 a closing top-5 digest. `--new`, `--gone`, `--restarted` and `--memory`
 pick sections; a single section has no digest.
 
+`--brief` is the whole diff on one line, for a CI log, a commit message
+or a chat; the section flags are ignored with it:
+
+```bash
+psm diff --brief
+```
+
+```text
+#0 baseline -> now: 263 -> 265 processes, new 3, gone 1, restarted 0, net +512 MiB (RSS + swap); top: code +400 MiB, chrome -120 MiB, node +72 MiB
+```
+
+The movers are the largest absolute changes above `--min-delta`, three
+of them unless `--top` says otherwise; `--group`, `--metric` and the
+filters apply. With `--json` it is one small object (`from`, `to`,
+`processes`, `metric`, `net_change`, `top`). Across a reboot the line
+says `different boots: programs compared`.
+
 ### Memory impact
 
 `psm diff --memory` is one ranking over **all** processes, largest

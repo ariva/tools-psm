@@ -82,6 +82,9 @@ pub struct DiffArgs {
     /// Restarted processes only
     #[arg(long)]
     pub restarted: bool,
+    /// One line: counts, net memory change and the largest movers (diff only)
+    #[arg(long)]
+    pub brief: bool,
     /// One row per distinct group instead of one row per process
     #[arg(long, value_name = "KEY", value_parser = group_keys())]
     pub group: Option<String>,

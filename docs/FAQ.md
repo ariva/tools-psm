@@ -68,6 +68,7 @@ not a rate.
 | 4.6 | Which program burned the most CPU since my last snapshot? | `psm report cpu prev` | [reports](USAGE.md#reports) |
 | 4.7 | How do I compare two specific snapshots? | `psm diff 0 2` | [comparing](USAGE.md#comparing) |
 | 4.8 | What was in a snapshot I took earlier? | `psm list`, then `psm procs show <n>` | [sessions and housekeeping](USAGE.md#sessions-and-housekeeping) |
+| 4.9 | How do I get the diff as one line for a log or a commit message? | `psm diff --brief` | [comparing](USAGE.md#comparing) |
 
 3. Comparing
 

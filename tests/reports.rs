@@ -157,3 +157,35 @@ fn trend_ranks_growth_over_the_session() {
             .contains("at least 3 points")
     );
 }
+
+#[test]
+fn brief_is_the_diff_on_one_line() {
+    let e = Env::new("brief");
+    e.before_and_after(&[]);
+    let line = e.ok("after", &["diff", "--brief"]);
+    assert_eq!(line.lines().count(), 1, "{line}");
+    assert!(
+        line.starts_with("#0 baseline -> now: 5 -> 5 processes, new 2, gone 2, restarted 1, net -36 MiB (RSS + swap); top: rust-analyzer -468 MiB, code +400 MiB, node +72 MiB"),
+        "{line}"
+    );
+    assert!(
+        e.ok("after", &["diff", "--brief", "--top", "1"])
+            .ends_with("top: rust-analyzer -468 MiB\n")
+    );
+    assert!(
+        e.ok("after", &["diff", "--brief", "--min-delta", "10G"])
+            .contains("top: no change above 10.00 GiB")
+    );
+    let j = e.json("after", &["diff", "--brief", "--json"]);
+    assert_eq!(j["processes"]["new"], 2);
+    assert_eq!(j["net_change"], -36 * MIB);
+    assert_eq!(
+        column(rows(&j, "top"), "name"),
+        ["rust-analyzer", "code", "node"]
+    );
+    assert_eq!(rows(&j, "top")[0]["status"], "restarted");
+    assert!(
+        e.fails("after", &["report", "growth", "--brief"])
+            .contains("--brief is for `psm diff`")
+    );
+}

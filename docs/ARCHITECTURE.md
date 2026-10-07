@@ -64,7 +64,7 @@ Nothing below `commands` knows about clap.
 | `commands/mod.rs` | `Ctx` (flags + environment + config merged), `run()`, the dispatch, and the `--watch` loop around it. |
 | `commands/views.rs` | `procs` (`list`, the default, and `show`), `pid` (one process, with its session history), `info`. |
 | `commands/capture.rs` | `new`, `snap`, and the never-stored live snapshot behind `now`. |
-| `commands/compare.rs` | `diff`, `report`, `compare`: reference resolution, diff settings, sections, the closing digest. |
+| `commands/compare.rs` | `diff`, `report`, `compare`: reference resolution, diff settings, sections, the closing digest, the `--brief` line. |
 | `commands/sessions.rs` | `status`, `sessions list/activate/deactivate/export/import/delete`, `snapshots list/delete`, `export`, `import`. |
 | `commands/maintenance.rs` | `purge`, `backup`, `reset`. |
 | `commands/setup.rs` | `init`, `config`, where completion scripts go. |

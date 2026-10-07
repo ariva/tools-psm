@@ -44,7 +44,7 @@ Linux only. The Cargo package is `tool-psm`; the binary is `psm`.
 | `psm new [name] [description]` | New session and its baseline; the previous one becomes inactive |
 | `psm snap [label] [description]` | Another snapshot in the active session |
 | `psm` / `psm status` | Active session summary |
-| `psm diff [a] [b]` | Changes between two snapshots; default baseline -> now |
+| `psm diff [a] [b]` | Changes between two snapshots; default baseline -> now; `--brief` for one line |
 | `psm report <kind>` | `memory`, `growth`, `processes`, `new`, `gone`, `cpu`, `meminfo`, `timeline`, `trend` |
 | `psm procs show [ref]` | Processes of one stored snapshot (`list` is the live ones); same options |
 | `psm list` (= `psm snapshots`) / `psm sessions` | What is stored |
