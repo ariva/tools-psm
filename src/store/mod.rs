@@ -50,6 +50,8 @@ pub struct SnapMeta {
     pub label: Option<String>,
     pub description: Option<String>,
     pub created: String,
+    /// Seconds since the epoch, for time axes (`report trend`).
+    pub created_epoch: i64,
     pub processes: i64,
     pub deep: bool,
 }

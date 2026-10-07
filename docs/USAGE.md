@@ -11,6 +11,7 @@ moments you choose and shows what changed between them.
 | Which application uses the most memory, helpers included? | `psm procs --group app` | [grouping](#grouping) |
 | What changed since I started? | `psm diff` (baseline -> now; `psm new` takes the baseline) | [a typical session](#a-typical-session) |
 | What changed since my last snapshot? | `psm diff prev` | [comparing](#comparing) |
+| Is it still growing? | `psm report trend` | [trend](#is-it-still-growing) |
 | Who moved memory the most? | `psm diff --memory` | [memory impact](#memory-impact) |
 | Memory went down but no process grew. Where did it go? | `psm report meminfo` | [reports](#reports) |
 | What is this process, and where does it come from? | `psm procs --name X --group exe` (then `parent`, `cmdline`) | [example](#what-is-this-process-and-where-does-it-come-from) |
@@ -350,6 +351,9 @@ References and defaults are the same as for `diff`.
 | `cpu` | CPU seconds used between the two snapshots, per program |
 | `meminfo` | every `/proc/meminfo` field that changed |
 | `timeline` | one row per snapshot of the session |
+| `trend` | every program across all snapshots of the session plus `now`: growing, shrinking, noisy or flat |
+
+`timeline` and `trend` cover the whole session and take no references.
 
 `meminfo` answers the case process data cannot: system memory went
 down, but no process grew (tmpfs, page cache, kernel slab).
@@ -507,22 +511,36 @@ chrome_crashpad       2      2      0
 
 ### Is it still growing?
 
-One row per snapshot, with the total of the matching processes:
+Take snapshots at rest over a while, then ask for every program at once:
 
 ```bash
-psm report timeline --name chrome
+psm report trend
 ```
 
 ```text
-ID  LABEL         TIME                 PROCS       USED    SWAP  MATCHED RSS+SWAP
- 0  baseline      2026-09-30 09:12:31     40  15.04 GiB     0 B         10.11 GiB
- 1  after-update  2026-09-30 09:40:02     42  15.61 GiB     0 B         10.31 GiB
- 2  after-1-hour  2026-09-30 10:41:17     47  16.92 GiB  12 MiB         11.48 GiB
+TREND   session chrome-154: 5 snapshots + now over 2.3 h   (RSS + swap)
+PROGRAM          FIRST      LAST     DELTA  UP    SLOPE/H  VERDICT
+chrome        3.42 GiB  3.91 GiB  +500 MiB  5/5  +210 MiB  growing
+code          1.91 GiB  2.01 GiB  +100 MiB  3/5   +38 MiB  noisy
+rust-analyzer  812 MiB   640 MiB  -172 MiB  1/5   -70 MiB  shrinking
+node            72 MiB    73 MiB    +1 MiB  2/5      0 B   flat
 ```
 
-`PROCS` counts the matching processes; `USED` and `SWAP` are the whole
-system. A steadily rising last column across snapshots taken at rest is
-what a leak looks like.
+One row per program (`--group` for another key), over every snapshot
+of the session with `now` as the last point. `UP` is how many steps
+rose out of all steps; `SLOPE/H` is a least-squares line through all
+points, in bytes per hour (`n/a` when the points are less than a
+minute apart). The verdict uses `--min-delta` (default `1M`): `flat`
+when the end-to-end change is below it, `growing` or `shrinking` when
+no step of that size went the other way, `noisy` otherwise. A `growing`
+row with `UP 5/5` across snapshots taken at rest is what a leak looks
+like; `--metric anon` sharpens it to memory the program allocated
+itself. Largest change first, `flat` rows last; `--name`, `--top` and
+the other filters apply, and `--watch` repeats it with a fresh `now`.
+
+The raw per-snapshot values are `report timeline --name chrome`: one
+row per snapshot with the total of the matching processes in the last
+column.
 
 ### Which of its processes is busy right now?
 

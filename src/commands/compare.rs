@@ -72,6 +72,7 @@ pub fn report(ctx: &Ctx, kind: ReportKind, args: &DiffArgs) -> Result<()> {
             ctx.emit(&table, false);
             return Ok(());
         }
+        ReportKind::Trend => return trend(ctx, &db, args),
         ReportKind::Memory => Section::Memory,
         ReportKind::Processes => Section::Counts {
             only_changed: false,
@@ -84,6 +85,70 @@ pub fn report(ctx: &Ctx, kind: ReportKind, args: &DiffArgs) -> Result<()> {
     };
     let (a, b) = pair(ctx, &db, args)?;
     compare(ctx, &a, &b, args, &[section])
+}
+
+/// `psm report trend`: every snapshot of the session plus `now`, one row per group.
+fn trend(ctx: &Ctx, db: &Db, args: &DiffArgs) -> Result<()> {
+    if args.a.is_some() || args.b.is_some() {
+        bail!("report trend takes no snapshot references: it covers every snapshot of the session");
+    }
+    let session = db.session(None)?;
+    let filter = ctx.filter(&args.filter)?;
+    let metas = db.snapshots(session.id, filter.kernel)?;
+    let stored: Vec<Snapshot> = metas.iter().map(|m| db.load(m.id)).collect::<Result<_>>()?;
+    let live = live_snapshot(ctx, stored.last())?;
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map_or(0.0, |d| d.as_secs_f64());
+    let points: Vec<(f64, &Snapshot)> = metas
+        .iter()
+        .map(|m| m.created_epoch as f64)
+        .zip(&stored)
+        .chain([(now, &live)])
+        .collect();
+    if points.len() < 3 {
+        bail!(
+            "report trend needs at least 3 points (2 snapshots plus now); session {:?} has {} snapshot{}, take another `psm snap`",
+            session.name,
+            stored.len(),
+            if stored.len() == 1 { "" } else { "s" }
+        );
+    }
+    let metric = Metric::parse(args.metric.as_deref().unwrap_or(&ctx.cfg.diff.metric))?;
+    if metric == Metric::Pss && !points.iter().all(|(_, s)| s.deep) {
+        bail!("--metric pss needs every snapshot taken with --deep");
+    }
+    let min_delta = crate::output::parse_size(
+        args.min_delta
+            .as_deref()
+            .unwrap_or(&ctx.cfg.diff.min_memory_delta),
+    )?;
+    let kind = ctx.group(&args.group).unwrap_or_else(|| "name".into());
+    let snaps: Vec<&Snapshot> = points.iter().map(|p| p.1).collect();
+    let grouper = Grouper::new(&kind, &snaps)?;
+    let mut table = reports::trend_table(&points, &grouper, metric, &filter, min_delta);
+    table.truncate(args.top.or(ctx.cfg.display.top));
+    let span_hours = (now - points[0].0) / 3600.0;
+    if ctx.json {
+        print_json(&json!({
+            "session": session.name,
+            "snapshots": stored.len(),
+            "span_hours": (span_hours * 100.0).round() / 100.0,
+            "metric": metric.label(),
+            "trend": table.json(),
+        }));
+    } else {
+        out(format!(
+            "TREND   session {}: {} snapshot{} + now over {:.1} h   ({})\n{}",
+            session.name,
+            stored.len(),
+            if stored.len() == 1 { "" } else { "s" },
+            span_hours,
+            metric.label(),
+            table.render()
+        ));
+    }
+    Ok(())
 }
 
 /// `psm sessions compare a b`: two sessions by program, using the latest snapshot of each.

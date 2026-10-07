@@ -44,7 +44,10 @@ const FAQ: &[(&str, &[(&str, &str)])] = &[
                 "How did one application change?",
                 "psm diff --name X --memory",
             ),
-            ("Is it still growing?", "psm report timeline --name X"),
+            (
+                "Is it still growing?",
+                "psm report trend   (--name X for one program)",
+            ),
             (
                 "Which of its processes is busy right now?",
                 "psm procs --name X --sort cpu --top 3",

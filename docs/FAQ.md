@@ -22,7 +22,7 @@ word given must match), and `psm faq 5.3` picks one row by number.
 | 1.8 | Who started this process? | `psm procs --name X --group parent` | [example](USAGE.md#what-is-this-process-and-where-does-it-come-from) |
 | 1.9 | Which part of an application grew? | `psm diff --name X --group parent --memory` | [example](USAGE.md#which-part-of-it-grew) |
 | 1.10 | How did one application change? | `psm diff --name X --memory` | [example](USAGE.md#how-did-one-application-change) |
-| 1.11 | Is it still growing? | `psm report timeline --name X` | [example](USAGE.md#is-it-still-growing) |
+| 1.11 | Is it still growing? | `psm report trend` (`--name X` for one program) | [example](USAGE.md#is-it-still-growing) |
 | 1.12 | Which of its processes is busy right now? | `psm procs --name X --sort cpu --top 3` | [example](USAGE.md#which-of-its-processes-is-busy-right-now) |
 | 1.13 | Did the new version use more memory? | `psm sessions compare old new --name X` | [example](USAGE.md#did-the-new-version-use-more-memory) |
 | 1.14 | How do I keep this state for later? | `psm snap after-update` | [capturing](USAGE.md#capturing) |

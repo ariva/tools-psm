@@ -78,7 +78,7 @@ Nothing below `commands` knows about clap.
 | `analysis/group.rs` | `Grouper`: the group keys, application roots, the launcher list. |
 | `analysis/diff.rs` | Classifies processes between two snapshots and builds the comparison tables. |
 | `analysis/view.rs` | The table of one snapshot: filter, group, sort, cut; `%CPU` formulas. |
-| `analysis/reports.rs` | System header, `status`, and the meminfo, cpu and timeline reports. |
+| `analysis/reports.rs` | System header, `status`, and the meminfo, cpu, timeline and trend reports. |
 | `output/mod.rs` | `out` (pipe-safe printing), `print_json`. |
 | `output/table.rs` | `Table` and `Cell`: one definition rendered as text, JSON or CSV. |
 | `output/units.rs` | Binary units, size and duration parsing. |
@@ -243,6 +243,20 @@ For `--group cgroup` the diff prefers the kernel's own figure
 both snapshots have it and no filter narrows the process set (a
 filtered group is not the whole cgroup).
 
+### Trend over a session
+
+`report trend` is one `Grouper` built over every snapshot of the session
+plus `now`, so a program keeps one key throughout. Each group becomes a
+series with one value per point, 0 where the group is absent (its
+process count there is zero), and a group seen at fewer than two points
+is left out. `trend_stats` is pure: steps up, a least-squares slope in
+bytes per hour (withheld when the span is under a minute, where it
+would read as terabytes), and the verdict against `min_delta`: `flat`
+below it end to end, `growing`/`shrinking` when no step of that size
+goes against the end-to-end direction, `noisy` otherwise. The time axis
+is `created_at` as epoch seconds (`strftime('%s')` in the `snapshots`
+query), so it survives a reboot where `uptime_seconds` would not.
+
 ## Views of one snapshot
 
 `report::view_table` is the single implementation behind `list`, `show`
@@ -330,5 +344,5 @@ Marked in the code with a `ponytail:` comment.
 
 ## Not built
 
-`watch` (interval snapshots), notes and tags, a per-program timeline,
-thresholds with exit code `1`, HTML reports.
+`watch` (interval snapshots), notes and tags, thresholds with exit
+code `1`, HTML reports.

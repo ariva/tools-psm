@@ -84,3 +84,76 @@ fn reports_and_export() {
         Value::Null
     );
 }
+
+#[test]
+fn trend_ranks_growth_over_the_session() {
+    let e = Env::new("trend");
+    e.before_and_after(&[]);
+    e.ok("after", &["snap", "again"]);
+    // Points: before, after, after, now (= after): three steps, the first one moves.
+    let t = e.json("after", &["report", "trend", "--json"]);
+    assert_eq!(t["snapshots"], 3);
+    let row = |name: &str| {
+        rows(&t, "trend")
+            .iter()
+            .find(|r| r["name"] == name)
+            .cloned()
+            .unwrap_or_else(|| panic!("no row {name}"))
+    };
+    assert_eq!(row("code")["verdict"], "growing");
+    assert_eq!(row("code")["up"], "1/3");
+    assert_eq!(row("code")["delta"], 400 * MIB);
+    assert_eq!(row("rust-analyzer")["verdict"], "shrinking");
+    assert_eq!(
+        row("node")["first"],
+        0,
+        "absent from the baseline counts as 0"
+    );
+    assert_eq!(
+        row("code")["slope_per_hour"],
+        Value::Null,
+        "seconds apart: no slope"
+    );
+    assert_eq!(
+        column(rows(&t, "trend"), "verdict")
+            .last()
+            .unwrap()
+            .as_str(),
+        Some("flat"),
+        "flat rows last"
+    );
+    assert!(
+        rows(
+            &e.json(
+                "after",
+                &["report", "trend", "--min-delta", "10G", "--json"]
+            ),
+            "trend"
+        )
+        .iter()
+        .all(|r| r["verdict"] == "flat")
+    );
+    assert_eq!(
+        rows(
+            &e.json(
+                "after",
+                &["report", "trend", "--group", "app", "--top", "1", "--json"]
+            ),
+            "trend"
+        )
+        .len(),
+        1
+    );
+    assert!(
+        e.fails("after", &["report", "trend", "0", "1"])
+            .contains("no snapshot references")
+    );
+
+    let short = Env::new("trend-short");
+    short.ok("before", &["new", "s"]);
+    assert!(
+        short
+            .fails("after", &["report", "trend"])
+            .contains("at least 3 points")
+    );
+}

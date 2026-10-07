@@ -91,7 +91,7 @@ impl Db {
         let mut stmt = self.conn.prepare(
             "SELECT id, label, datetime(created_at,'localtime'), deep,
                     (SELECT count(*) FROM processes WHERE snapshot_id = snapshots.id AND kthread <= ?2),
-                    seq, description
+                    seq, description, CAST(strftime('%s', created_at) AS INTEGER)
              FROM snapshots WHERE session_id = ?1 ORDER BY id",
         )?;
         let rows = stmt
@@ -104,6 +104,7 @@ impl Db {
                     processes: r.get(4)?,
                     seq: r.get(5)?,
                     description: r.get(6)?,
+                    created_epoch: r.get(7)?,
                 })
             })?
             .collect::<rusqlite::Result<_>>()?;

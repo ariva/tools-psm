@@ -33,6 +33,8 @@ pub enum ReportKind {
     Cpu,
     /// One row per snapshot of the session
     Timeline,
+    /// Every program across all snapshots of the session plus now: growing, shrinking, noisy or flat
+    Trend,
     /// Every /proc/meminfo field that changed
     Meminfo,
 }
@@ -145,13 +147,14 @@ Examples:
     List,
     /// Active session summary (same as running without a command)
     Status,
-    /// One report over two snapshots [default: baseline -> now], or the session timeline
+    /// One report over two snapshots [default: baseline -> now], or over the whole session (timeline, trend)
     #[command(after_help = format!("\
 Examples:
   psm report growth                 programs that grew since the baseline
   psm report meminfo prev           system memory fields changed since the last snapshot
   psm report cpu 0 2                CPU time between two snapshots
   psm report timeline --name chrome one program across all snapshots
+  psm report trend                  who keeps growing across all snapshots and now
 
 {REFERENCES}"))]
     Report {

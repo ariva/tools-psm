@@ -1,5 +1,5 @@
 //! Reports that are not plain diffs: the system header, `status`,
-//! `meminfo`, `cpu`, `timeline`.
+//! `meminfo`, `cpu`, `timeline`, `trend`.
 
 use std::collections::BTreeMap;
 
@@ -9,7 +9,7 @@ use serde_json::{Value, json};
 use super::diff::{Diff, Status};
 use super::group::Grouper;
 use super::view::cpu_percent;
-use crate::model::{Filter, Proc, Snapshot, add};
+use crate::model::{Filter, Metric, Proc, Snapshot, add};
 use crate::output::{Cell, Table, human, human_delta};
 use crate::store::{Db, Session};
 
@@ -215,4 +215,149 @@ pub fn timeline_table(db: &Db, session: &Session, filter: &Filter) -> Result<Tab
         t.rows.push(row);
     }
     Ok(t)
+}
+
+/// One series summarised: how a group's memory moved over the session.
+#[derive(Debug, PartialEq)]
+pub struct TrendStats {
+    pub up: usize,
+    pub steps: usize,
+    /// Bytes per hour, least squares; `None` when every point has the same time.
+    pub slope: Option<i64>,
+    pub verdict: &'static str,
+}
+
+/// Below this span the slope is not shown: seconds apart, any change reads as
+/// terabytes per hour.
+const MIN_SLOPE_SPAN_HOURS: f64 = 1.0 / 60.0;
+
+/// `values` per point (0 where the group was absent), `hours` since the first point.
+/// Below `min_delta` end to end is `flat`; `growing` or `shrinking` when no step
+/// of `min_delta` or more goes against that direction; otherwise `noisy`.
+pub fn trend_stats(values: &[i64], hours: &[f64], min_delta: i64) -> TrendStats {
+    let steps = values.len().saturating_sub(1);
+    let up = values.windows(2).filter(|w| w[1] > w[0]).count();
+    let delta = values.last().copied().unwrap_or(0) - values.first().copied().unwrap_or(0);
+    let against =
+        |w: &[i64]| (w[1] - w[0]).signum() != delta.signum() && (w[1] - w[0]).abs() >= min_delta;
+    let verdict = if delta.abs() < min_delta {
+        "flat"
+    } else if values.windows(2).any(against) {
+        "noisy"
+    } else if delta > 0 {
+        "growing"
+    } else {
+        "shrinking"
+    };
+    let n = values.len() as f64;
+    let x_mean = hours.iter().sum::<f64>() / n;
+    let y_mean = values.iter().map(|&v| v as f64).sum::<f64>() / n;
+    let sxx: f64 = hours.iter().map(|x| (x - x_mean).powi(2)).sum();
+    let sxy: f64 = hours
+        .iter()
+        .zip(values)
+        .map(|(x, &y)| (x - x_mean) * (y as f64 - y_mean))
+        .sum();
+    let span = hours.last().copied().unwrap_or(0.0) - hours.first().copied().unwrap_or(0.0);
+    let slope = (sxx > 0.0 && span >= MIN_SLOPE_SPAN_HOURS).then(|| (sxy / sxx).round() as i64);
+    TrendStats {
+        up,
+        steps,
+        slope,
+        verdict,
+    }
+}
+
+/// One row per group over every point `(epoch seconds, snapshot)` of the
+/// session, `now` last. A group absent from a point counts 0 there; one seen
+/// at fewer than two points is left out. Largest end-to-end change first,
+/// `flat` rows last.
+pub fn trend_table(
+    points: &[(f64, &Snapshot)],
+    g: &Grouper,
+    metric: Metric,
+    filter: &Filter,
+    min_delta: i64,
+) -> Table {
+    let n = points.len();
+    let mut series: BTreeMap<String, Vec<Option<i64>>> = BTreeMap::new();
+    for (i, (_, s)) in points.iter().enumerate() {
+        for p in s.processes.iter().filter(|p| filter.keep(p)) {
+            let slot = &mut series.entry(g.key(p)).or_insert_with(|| vec![None; n])[i];
+            *slot = add(*slot, metric.value(p));
+        }
+    }
+    let first_time = points.first().map_or(0.0, |p| p.0);
+    let hours: Vec<f64> = points.iter().map(|p| (p.0 - first_time) / 3600.0).collect();
+    let mut rows: Vec<(String, Vec<i64>, TrendStats)> = series
+        .into_iter()
+        .filter(|(_, v)| v.iter().flatten().count() >= 2)
+        .map(|(key, v)| {
+            let values: Vec<i64> = v.iter().map(|x| x.unwrap_or(0)).collect();
+            let stats = trend_stats(&values, &hours, min_delta);
+            (key, values, stats)
+        })
+        .collect();
+    rows.sort_by(|a, b| {
+        let flat = |r: &(String, Vec<i64>, TrendStats)| r.2.verdict == "flat";
+        let delta = |r: &(String, Vec<i64>, TrendStats)| (r.1[n - 1] - r.1[0]).abs();
+        flat(a)
+            .cmp(&flat(b))
+            .then_with(|| delta(b).cmp(&delta(a)))
+            .then_with(|| a.0.cmp(&b.0))
+    });
+    let mut t = Table::new(&[
+        (g.title(), "name"),
+        ("FIRST", "first"),
+        ("LAST", "last"),
+        ("DELTA", "delta"),
+        ("UP", "up"),
+        ("SLOPE/H", "slope_per_hour"),
+        ("VERDICT", "verdict"),
+    ]);
+    for (key, values, stats) in rows {
+        let (first, last) = (values[0], values[n - 1]);
+        t.rows.push(vec![
+            Cell::Text(g.display(&key)),
+            Cell::Bytes(Some(first)),
+            Cell::Bytes(Some(last)),
+            Cell::Delta(Some(last - first)),
+            Cell::text(format!("{}/{}", stats.up, stats.steps)),
+            Cell::Delta(stats.slope),
+            Cell::text(stats.verdict),
+        ]);
+    }
+    t
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    const MIB: i64 = 1 << 20;
+
+    #[test]
+    fn trend_verdicts_and_slope() {
+        let hours = [0.0, 1.0, 2.0, 3.0];
+        // Growth with one flat step still counts as growing; least squares gives 90 MiB/h.
+        let s = trend_stats(&[100 * MIB, 200 * MIB, 200 * MIB, 400 * MIB], &hours, MIB);
+        assert_eq!(s.verdict, "growing");
+        assert_eq!((s.up, s.steps), (2, 3));
+        assert_eq!(s.slope, Some(90 * MIB));
+        // A drop of min_delta or more on the way is noise, whatever the ends say.
+        let s = trend_stats(&[100 * MIB, 300 * MIB, 150 * MIB, 400 * MIB], &hours, MIB);
+        assert_eq!(s.verdict, "noisy");
+        // Below the threshold end to end is flat, even with a small dip.
+        let s = trend_stats(
+            &[100 * MIB, 100 * MIB - 1, 100 * MIB, 100 * MIB],
+            &hours,
+            MIB,
+        );
+        assert_eq!(s.verdict, "flat");
+        let s = trend_stats(&[400 * MIB, 300 * MIB, 200 * MIB, 100 * MIB], &hours, MIB);
+        assert_eq!((s.verdict, s.slope), ("shrinking", Some(-100 * MIB)));
+        // Points seconds apart: no slope, but a verdict.
+        let s = trend_stats(&[0, MIB, 2 * MIB], &[0.0, 0.001, 0.002], MIB);
+        assert_eq!((s.slope, s.verdict), (None, "growing"));
+    }
 }
