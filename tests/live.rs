@@ -147,3 +147,69 @@ fn watch_repeats_live_views_only() {
     let text = String::from_utf8(out.stdout).unwrap();
     assert!(text.contains("\"new\""), "first round printed: {text}");
 }
+
+#[test]
+fn search_words_and_precise_filters() {
+    let e = Env::new("search");
+    let names = |fixture: &str, args: &[&str]| -> Vec<String> {
+        let all = [&["procs"][..], args, &["--interval", "0", "--json"]].concat();
+        column(e.json(fixture, &all).as_array().unwrap(), "command")
+            .iter()
+            .map(|v| v.as_str().unwrap().to_string())
+            .collect()
+    };
+    assert_eq!(names("before", &["CODE"]), ["code"], "case does not matter");
+    assert_eq!(names("before", &["100"]), ["code"], "a pid matches exactly");
+    assert_eq!(names("before", &["10"]), Vec::<String>::new());
+    assert_eq!(
+        names("after", &["node"]),
+        ["node"],
+        "exe and command line count"
+    );
+    assert_eq!(
+        names("before", &["code", "renderer"]),
+        ["code"],
+        "every word must match"
+    );
+    assert_eq!(names("before", &["code", "server"]), Vec::<String>::new());
+    assert_eq!(
+        names("before", &["--pid", "100,300"]),
+        ["code", "rust-analyzer"]
+    );
+    assert_eq!(names("after", &["--cmdline", "SERVER"]), ["node"]);
+    assert_eq!(
+        names("before", &["--name", "CODE"]),
+        ["code"],
+        "--name ignores case"
+    );
+    assert_eq!(
+        names("before", &["--name", "CODE", "--match-case"]),
+        Vec::<String>::new()
+    );
+    assert_eq!(
+        names("before", &["CODE", "--match-case"]),
+        Vec::<String>::new()
+    );
+    assert_eq!(
+        names("before", &["list", "code"]),
+        ["code"],
+        "list takes the words too"
+    );
+    assert!(
+        e.fails("before", &["procs", "--top", "3", "list"])
+            .contains("put it right after `procs`"),
+        "a subcommand after an option is refused, not searched for"
+    );
+
+    e.before_and_after(&[]);
+    let shown = e.json("before", &["procs", "show", "now", "code", "--json"]);
+    assert_eq!(column(shown.as_array().unwrap(), "command"), ["code"]);
+    assert!(
+        e.fails("before", &["procs", "show", "code"])
+            .contains("no snapshot \"code\""),
+        "the reference comes first on show"
+    );
+    let d = e.json("after", &["diff", "--pid", "100", "--memory", "--json"]);
+    assert_eq!(rows(&d, "memory").len(), 1);
+    assert_eq!(rows(&d, "memory")[0]["pid"], 100);
+}

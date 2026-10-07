@@ -139,12 +139,32 @@ impl Metric {
     }
 }
 
+#[derive(Default)]
 pub struct Filter {
     pub user: Option<String>,
     pub name: Option<String>,
     pub exe: Option<String>,
+    /// Exact pids; empty means any.
+    pub pids: Vec<i64>,
+    /// Substring of the command line.
+    pub cmdline: Option<String>,
+    /// Words that must each match somewhere: pid, name, executable or
+    /// command line. The loose form; the fields above are the precise ones.
+    pub search: Vec<String>,
+    /// `name`, `cmdline` and `search` compare exactly; by default case
+    /// does not matter. `exe` is a path and always exact.
+    pub match_case: bool,
     pub exclude: Option<Regex>,
     pub kernel: bool,
+}
+
+/// Substring test, case-insensitive unless `match_case`.
+fn contains(hay: &str, needle: &str, match_case: bool) -> bool {
+    if match_case {
+        hay.contains(needle)
+    } else {
+        hay.to_lowercase().contains(&needle.to_lowercase())
+    }
 }
 
 impl Filter {
@@ -156,16 +176,40 @@ impl Filter {
             && self
                 .name
                 .as_ref()
-                .is_none_or(|n| p.comm.contains(n.as_str()))
+                .is_none_or(|n| contains(&p.comm, n, self.match_case))
             && self.exe.as_ref().is_none_or(|e| p.exe.as_ref() == Some(e))
+            && (self.pids.is_empty() || self.pids.contains(&p.pid))
+            && self.cmdline.as_ref().is_none_or(|c| {
+                p.cmdline
+                    .as_ref()
+                    .is_some_and(|l| contains(l, c, self.match_case))
+            })
+            && self.search.iter().all(|w| self.matches_word(p, w))
             && !self.exclude.as_ref().is_some_and(|r| {
                 r.is_match(&p.comm) || p.cmdline.as_ref().is_some_and(|c| r.is_match(c))
             })
     }
 
+    fn matches_word(&self, p: &Proc, w: &str) -> bool {
+        p.pid.to_string() == w
+            || contains(&p.comm, w, self.match_case)
+            || p.exe
+                .as_ref()
+                .is_some_and(|e| contains(e, w, self.match_case))
+            || p.cmdline
+                .as_ref()
+                .is_some_and(|c| contains(c, w, self.match_case))
+    }
+
     /// True when the user narrowed the process set (kernel visibility aside).
     pub fn is_narrowing(&self) -> bool {
-        self.user.is_some() || self.name.is_some() || self.exe.is_some() || self.exclude.is_some()
+        self.user.is_some()
+            || self.name.is_some()
+            || self.exe.is_some()
+            || !self.pids.is_empty()
+            || self.cmdline.is_some()
+            || !self.search.is_empty()
+            || self.exclude.is_some()
     }
 }
 
@@ -175,5 +219,73 @@ pub fn add(a: Option<i64>, b: Option<i64>) -> Option<i64> {
         (Some(x), Some(y)) => Some(x + y),
         (x, None) => x,
         (None, y) => y,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn proc(pid: i64, comm: &str, exe: Option<&str>, cmdline: Option<&str>) -> Proc {
+        Proc {
+            pid,
+            comm: comm.into(),
+            exe: exe.map(String::from),
+            cmdline: cmdline.map(String::from),
+            ..Default::default()
+        }
+    }
+
+    #[test]
+    fn search_words_match_anywhere_case_insensitively() {
+        let code = proc(
+            100,
+            "code",
+            Some("/usr/share/code/code"),
+            Some("code --type=renderer"),
+        );
+        let node = proc(
+            600,
+            "MainThread",
+            Some("/usr/bin/node"),
+            Some("node server.js"),
+        );
+        let bare = proc(7, "kworker", None, None);
+        let f = |words: &[&str]| Filter {
+            search: words.iter().map(|w| w.to_string()).collect(),
+            ..Default::default()
+        };
+        assert!(f(&["CODE"]).keep(&code) && !f(&["code"]).keep(&node));
+        assert!(
+            f(&["node"]).keep(&node),
+            "exe and cmdline count, not only comm"
+        );
+        assert!(
+            f(&["100"]).keep(&code) && !f(&["10"]).keep(&code),
+            "pid is exact"
+        );
+        assert!(f(&["render", "code"]).keep(&code) && !f(&["render", "node"]).keep(&code));
+        assert!(!f(&["x"]).keep(&bare) && f(&["7"]).keep(&bare));
+        let precise = Filter {
+            pids: vec![100, 600],
+            cmdline: Some("server".into()),
+            ..Default::default()
+        };
+        assert!(precise.keep(&node) && !precise.keep(&code));
+        assert!(precise.is_narrowing() && !Filter::default().is_narrowing());
+        // --name ignores case too, unless asked to match it.
+        let name = |n: &str, match_case: bool| Filter {
+            name: Some(n.into()),
+            match_case,
+            ..Default::default()
+        };
+        assert!(name("mainthread", false).keep(&node));
+        assert!(!name("mainthread", true).keep(&node) && name("Main", true).keep(&node));
+        let exact = Filter {
+            search: vec!["CODE".into()],
+            match_case: true,
+            ..Default::default()
+        };
+        assert!(!exact.keep(&code));
     }
 }

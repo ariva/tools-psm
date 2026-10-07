@@ -51,7 +51,7 @@ Nothing below `commands` knows about clap.
 | Path | Responsibility |
 |---|---|
 | `main.rs` | Entry point: module list, `main()`, exit code. |
-| `model.rs` | `Proc`, `Snapshot`, `Metric`, `Filter`. Plain data, used by every layer. |
+| `model.rs` | `Proc`, `Snapshot`, `Metric`, `Filter` (every filter, precise flags and the loose word search, in one `keep`). Plain data, used by every layer. |
 | `config.rs` | Config file loading, the default-file template, default paths, `~` expansion. |
 | `cli/` | Command-line definition (clap derive). No logic. |
 | `cli/mod.rs` | `Cli`: the global options. |

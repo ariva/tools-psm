@@ -45,6 +45,8 @@ pub enum ExportFormat {
     Csv,
 }
 
+// Procs carries the view options, filters and the word search; clap builds it once.
+#[allow(clippy::large_enum_variant)]
 #[derive(Clone, Subcommand)]
 pub enum Cmd {
     /// Processes: now (list, the default) or of a stored snapshot (show)

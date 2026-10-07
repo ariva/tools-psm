@@ -1,6 +1,6 @@
 //! Tables of one snapshot: `list` and `info` (live), `show` (stored or live).
 
-use anyhow::Result;
+use anyhow::{Result, bail};
 use serde_json::{Map, Value};
 
 use super::{Ctx, note_restricted};
@@ -10,6 +10,13 @@ use crate::cli::{FilterArgs, ViewArgs};
 use crate::output::{out, print_json};
 
 pub fn list(ctx: &Ctx, view: &ViewArgs, interval: &Option<String>) -> Result<()> {
+    // After an option clap no longer looks for subcommands, so `psm procs
+    // --top 3 list` would search for the word "list". Say so instead.
+    if let Some(sub) = view.words.iter().find(|w| *w == "list" || *w == "show") {
+        bail!(
+            "`{sub}` is a subcommand: put it right after `procs` (`psm procs {sub} ...`); to search for the word use --name {sub}"
+        );
+    }
     let deep = view.deep.unwrap_or(ctx.cfg.collection.deep);
     let (snapshot, cpu, restricted) = ctx.live(deep, interval)?;
     ctx.emit(

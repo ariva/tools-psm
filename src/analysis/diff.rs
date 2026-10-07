@@ -465,6 +465,10 @@ mod tests {
         user: None,
         name: None,
         exe: None,
+        pids: Vec::new(),
+        cmdline: None,
+        search: Vec::new(),
+        match_case: false,
         exclude: None,
         kernel: false,
     };

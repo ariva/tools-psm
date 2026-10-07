@@ -55,6 +55,10 @@ impl Ctx {
             user: f.user.clone(),
             name: f.name.clone(),
             exe: f.exe.clone(),
+            pids: f.pid.clone(),
+            cmdline: f.cmdline.clone(),
+            search: Vec::new(),
+            match_case: f.match_case,
             exclude: f
                 .exclude_regex
                 .as_deref()
@@ -78,7 +82,10 @@ impl Ctx {
             sort: v.sort.clone().unwrap_or_else(|| "mem".into()),
             top: v.top.or(self.cfg.display.top),
             deep,
-            filter: self.filter(&v.filter)?,
+            filter: Filter {
+                search: v.words.clone(),
+                ..self.filter(&v.filter)?
+            },
         })
     }
 

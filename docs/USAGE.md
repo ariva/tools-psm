@@ -176,6 +176,8 @@ psm procs --sort cpu --top 10
 psm procs --group name             # one row per program
 psm procs --group cgroup           # one row per application (systemd)
 psm procs --user "$USER" --name chrome
+psm procs chrome                   # any word: pid, name, path or command line
+psm procs tsserver node            # every word must match
 ```
 
 ```text
@@ -199,6 +201,7 @@ odd.service         1   0.0   0.1         n/a    20 MiB    1
 | `--group <key>` | one row per group instead of per process; see [Grouping](#grouping) |
 | `--sort <column>` | `mem` (default), `cpu`, `threads`, `swap`, `io`, `pid`, `name`, `count` |
 | `--top <n>` | only the first n rows |
+| `[words]` | keep processes where every word appears in the pid, name, executable path or command line, ignoring case (`--match-case` to respect it); `psm procs show <ref> <words>` takes the reference first. `list` and `show` go right after `procs` (after an option they would read as words, so `psm` refuses them there); to search for those words use `--name` |
 
 Every per-process row shows `PID` and `PPID` (the parent's pid), so
 "who started it" is one lookup away: `--group parent` names the
@@ -384,9 +387,10 @@ process that exited took its final counters with it.
 
 ## Use cases: following one program with `--name`
 
-`--name <text>` keeps the processes whose name **contains** the text.
-The match is case-sensitive, so `--name chrome` also keeps
-`chrome_crashpad`, and `--name Main` keeps `MainThread`. It works on
+`--name <text>` keeps the processes whose name **contains** the text,
+whatever the case: `--name chrome` also keeps `chrome_crashpad`, and
+`--name main` keeps `MainThread` (`--match-case` to insist on `Main`).
+It works on
 `list`, `info`, `show`, `diff`, `report` and `compare`, and combines
 with `--group`, `--sort`, `--top` and the other filters.
 
@@ -583,6 +587,8 @@ chrome        26      29  3.41 GiB  3.80 GiB  +399 MiB
 |---|---|
 | only your own processes | `--user "$USER"` |
 | one exact binary, not a name fragment | `--exe /opt/google/chrome/chrome` |
+| one or two known pids | `--pid 4041081,4041135` |
+| the processes running one script | `--cmdline tsserver.js` |
 | everything except one helper | `--exclude-regex '^chrome_crashpad'` |
 | the result for a script | `--json` |
 
@@ -866,7 +872,15 @@ Filters, accepted by `list`, `info`, `show`, `diff`, `report`, `compare`:
 | `--user <name\|uid>` | processes of that user |
 | `--name <text>` | processes whose name contains the text |
 | `--exe <path>` | processes running exactly that executable |
-| `--exclude-regex <regex>` | drops processes whose name or command line matches |
+| `--pid <n,...>` | those process ids |
+| `--cmdline <text>` | processes whose command line contains the text |
+| `--match-case` | `--name`, `--cmdline` and the search words match case exactly (by default they ignore it) |
+| `--exclude-regex <regex>` | drops processes whose name or command line matches; `(?i)` at the start ignores case |
+
+`--name` and `--cmdline` each look at one field, for scripts. The words
+after `psm procs` are the loose form: one word may hit the name of one
+process and the command line of another. `--exe` is a path and is
+always exact.
 
 Global options, accepted everywhere:
 

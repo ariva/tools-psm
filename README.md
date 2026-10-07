@@ -37,7 +37,7 @@ Linux only. The Cargo package is `tool-psm`; the binary is `psm`.
 
 | Command | What it does |
 |---|---|
-| `psm procs` | Processes now, with CPU and memory; `--group`, `--sort`, `--top` |
+| `psm procs [words]` | Processes now, with CPU and memory; words match pid, name, path or command line; `--group`, `--sort`, `--top` |
 | `psm info [N]` | Live view: system memory information plus the top N by CPU, memory and threads; nothing is stored; also `--top N` |
 | `--watch [duration]` | Repeat a live view (`procs`, `info`, `diff` against `now`) every 10s, or the duration given, until Ctrl-C |
 | `psm new [name] [description]` | New session and its baseline; the previous one becomes inactive |

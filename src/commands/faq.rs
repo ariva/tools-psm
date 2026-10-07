@@ -102,6 +102,14 @@ const FAQ: &[(&str, &[(&str, &str)])] = &[
                 "How do I keep a live view refreshing?",
                 "psm info --watch   (every 10s; --watch 30 for 30s; also procs, diff)",
             ),
+            (
+                "How do I find a process by any word I know about it?",
+                "psm procs tsserver   (pid, name, path or command line)",
+            ),
+            (
+                "How do I look at one or two known pids?",
+                "psm procs --pid 4041081,4041135",
+            ),
         ],
     ),
     (

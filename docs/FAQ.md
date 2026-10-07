@@ -41,6 +41,8 @@ word given must match), and `psm faq 5.3` picks one row by number.
 | 2.5 | How much memory does each service or container take? | `psm procs --group cgroup` | [grouping](USAGE.md#grouping) |
 | 2.6 | Which processes run this exact binary? | `psm procs --exe /opt/google/chrome/chrome` | [filters](USAGE.md#filters-and-global-options) |
 | 2.7 | How do I keep a live view refreshing? | `psm info --watch` (every 10s; `--watch 30` for 30s; also `procs`, `diff`) | [watching](USAGE.md#watching) |
+| 2.8 | How do I find a process by any word I know about it? | `psm procs tsserver` (pid, name, path or command line) | [list](USAGE.md#psm-procs) |
+| 2.9 | How do I look at one or two known pids? | `psm procs --pid 4041081,4041135` | [filters](USAGE.md#filters-and-global-options) |
 
 The I/O figure is bytes read and written since each process started,
 not a rate.

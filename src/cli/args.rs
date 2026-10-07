@@ -9,12 +9,21 @@ pub struct FilterArgs {
     /// Only processes of this user (name or uid)
     #[arg(long)]
     pub user: Option<String>,
-    /// Only processes whose name contains this text
+    /// Only processes whose name contains this text (case does not matter)
     #[arg(long)]
     pub name: Option<String>,
     /// Only processes running this executable path
     #[arg(long)]
     pub exe: Option<String>,
+    /// Only these process ids, comma-separated
+    #[arg(long, value_name = "PID,...", value_delimiter = ',')]
+    pub pid: Vec<i64>,
+    /// Only processes whose command line contains this text (case does not matter)
+    #[arg(long, value_name = "TEXT")]
+    pub cmdline: Option<String>,
+    /// Make --name, --cmdline and the search words match case exactly
+    #[arg(long)]
+    pub match_case: bool,
     /// Drop processes whose name or command line matches
     #[arg(long, value_name = "REGEX")]
     pub exclude_regex: Option<String>,
@@ -22,6 +31,10 @@ pub struct FilterArgs {
 
 #[derive(Args, Clone)]
 pub struct ViewArgs {
+    /// Words to look for in the pid, name, executable path or command line;
+    /// every word must match, case does not matter (--match-case: it does)
+    #[arg(value_name = "WORD")]
+    pub words: Vec<String>,
     /// One row per distinct group instead of one row per process
     #[arg(long, value_name = "KEY", value_parser = group_keys())]
     pub group: Option<String>,
