@@ -62,7 +62,7 @@ the command that answers each.
 ## Install
 
 ```bash
-# 1. Install the latest psm, same way as in Install:
+# 1. Install the latest psm:
 cargo install --git https://github.com/ariva/tools-psm tool-psm --locked
 
 # 2. After installing init DB and create first session/snapshot:
