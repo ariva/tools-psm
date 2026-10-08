@@ -350,7 +350,7 @@ pub fn run(cli: Cli) -> Result<()> {
         return setup::database(&ctx);
     }
     let cmd = cli.cmd.unwrap_or(Cmd::Status);
-    match cli.watch {
+    match watch_of(&cmd)? {
         Some(every) => watch(&ctx, cmd, &every),
         None => dispatch(&ctx, cmd),
     }
@@ -359,11 +359,6 @@ pub fn run(cli: Cli) -> Result<()> {
 /// `--watch`: clear the screen and run a live view again every `every`
 /// until Ctrl-C. With `--json` nothing is cleared: one document per round.
 fn watch(ctx: &Ctx, cmd: Cmd, every: &str) -> Result<()> {
-    if !watchable(&cmd) {
-        bail!(
-            "--watch repeats live views only: procs, info, procs show now, diff/report against now"
-        );
-    }
     let every = parse_duration(every)?;
     if every.is_zero() {
         bail!("--watch needs a duration above zero");
@@ -436,25 +431,39 @@ fn countdown(every: Duration, round: u32) {
 }
 
 /// Commands that read the live state: the only ones worth repeating.
-fn watchable(cmd: &Cmd) -> bool {
-    let live_side = |d: &crate::cli::DiffArgs| {
-        d.a.as_deref() == Some("now") || d.b.as_deref().unwrap_or("now") == "now"
-    };
-    match cmd {
-        Cmd::Procs { cmd: None, .. }
-        | Cmd::Procs {
-            cmd: Some(ProcsCmd::List { .. }),
-            ..
-        }
-        | Cmd::Info { .. } => true,
+/// The `--watch` of a live view. Only those commands have the option, so
+/// what is left to refuse is a stored snapshot: nothing new to see there.
+fn watch_of(cmd: &Cmd) -> Result<Option<String>> {
+    let (watch, live) = match cmd {
         Cmd::Procs {
-            cmd: Some(ProcsCmd::Show { snapshot, .. }),
+            cmd: None, watch, ..
+        }
+        | Cmd::Procs {
+            cmd: Some(ProcsCmd::List { watch, .. }),
             ..
         }
-        | Cmd::Pid { snapshot, .. } => snapshot == "now",
-        Cmd::Diff(args) | Cmd::Report { diff: args, .. } => live_side(args),
-        _ => false,
+        | Cmd::Info { watch, .. } => (watch, true),
+        Cmd::Procs {
+            cmd: Some(ProcsCmd::Show {
+                watch, snapshot, ..
+            }),
+            ..
+        }
+        | Cmd::Pid {
+            watch, snapshot, ..
+        } => (watch, snapshot == "now"),
+        Cmd::Diff(args) | Cmd::Report { diff: args, .. } => (
+            &args.watch,
+            args.a.as_deref() == Some("now") || args.b.as_deref().unwrap_or("now") == "now",
+        ),
+        _ => return Ok(None),
+    };
+    if watch.watch.is_some() && !live {
+        bail!(
+            "--watch repeats live views only: `now` must be the snapshot, or one side of the comparison"
+        );
     }
+    Ok(watch.watch.clone())
 }
 
 fn dispatch(ctx: &Ctx, cmd: Cmd) -> Result<()> {
@@ -463,16 +472,17 @@ fn dispatch(ctx: &Ctx, cmd: Cmd) -> Result<()> {
             view,
             interval,
             cmd: None,
+            ..
         }
         | Cmd::Procs {
-            cmd: Some(ProcsCmd::List { view, interval }),
+            cmd: Some(ProcsCmd::List { view, interval, .. }),
             ..
         } => views::list(ctx, &view, &interval),
         Cmd::Procs {
-            cmd: Some(ProcsCmd::Show { snapshot, view }),
+            cmd: Some(ProcsCmd::Show { snapshot, view, .. }),
             ..
         } => views::show(ctx, &snapshot, &view),
-        Cmd::Pid { pid, snapshot } => views::pid(ctx, pid, &snapshot),
+        Cmd::Pid { pid, snapshot, .. } => views::pid(ctx, pid, &snapshot),
         Cmd::Info {
             n,
             top,
@@ -481,6 +491,7 @@ fn dispatch(ctx: &Ctx, cmd: Cmd) -> Result<()> {
             interval,
             deep,
             filter,
+            ..
         } => views::info(ctx, top.unwrap_or(n), &by, &group, &interval, deep, &filter),
         Cmd::New {
             name,

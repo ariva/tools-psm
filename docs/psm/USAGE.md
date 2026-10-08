@@ -284,9 +284,11 @@ PID  PPID  USER    %CPU  %MEM       RSS  THR  COMMAND
 
 `--watch [duration]` repeats a live view until Ctrl-C, clearing the
 screen each round; the default is every 10 seconds, a bare number is
-seconds. It works with `procs`, `info`, `procs show now`, and `diff` or
-`report` when `now` is one side (the default); anything else is refused,
-there is nothing new to see. Like `watch(1)` and `top`, it runs on the
+seconds. It is an option of the live views only: `procs`, `info`,
+`pid`, `procs show`, `diff` and `report`. With a stored snapshot (`pid
+<pid> latest`, `diff 0 1`) it is refused, there is nothing new to see;
+other commands do not have the option at all, so completion never
+offers it. Like `watch(1)` and `top`, it runs on the
 terminal's alternate screen: old rounds never reach the scrollback, and
 Ctrl-C brings the shell's screen back as it was. A footer, `Every 10s,
 round 3, next refresh in 7s, Ctrl-C stops`, counts down in place under
@@ -832,8 +834,8 @@ psm version                 # name, version, build date and commit; also psm -v,
 `help`, `-h` and `--help` are one command: `psm -h snapshots diff` is
 `psm help snapshots diff` on fewer lines.
 
-Global options (`--config`, `--db`, `--kernel`, `--json`, `--watch`,
-`--proc-root`) work with every command and can go before or after it: `psm --json diff`
+Global options (`--config`, `--db`, `--kernel`, `--json`, `--proc-root`)
+work with every command and can go before or after it: `psm --json diff`
 and `psm diff --json` are the same. They are listed by `psm -h`; a
 command's own help lists only its options.
 
@@ -950,8 +952,10 @@ Global options, accepted everywhere:
 | `--db [path]` | database file; also `PSM_DB`. Alone, with no command: shows the database in use and its schema version |
 | `--kernel` | include kernel threads |
 | `--json` | machine-readable output |
-| `--watch [duration]` | repeat a live view every duration (default `10s`) until Ctrl-C; see [Watching](#watching) |
 | `--proc-root <dir>` | read process data from a directory instead of `/proc` (tests) |
+
+`--watch [duration]` belongs to the live views (`procs`, `pid`, `info`,
+`diff`, `report`); see [Watching](#watching).
 
 Sizes (`--min-delta`) accept `500K`, `10M`, `1G`; the base is 1024.
 Durations (`--interval`, `--watch`, `--older-than`) accept `500ms`, `10s`, `5m`,

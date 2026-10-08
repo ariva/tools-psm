@@ -127,8 +127,11 @@ fn list_reads_the_process_table() {
 #[test]
 fn watch_repeats_live_views_only() {
     let e = Env::new("watch");
+    // Not a live view: the option does not exist there (so completion never offers it).
+    let err = e.fails("before", &["sessions", "--watch"]);
+    assert!(err.contains("unexpected argument '--watch'"), "{err}");
     let err = e.fails("before", &["--watch", "snap"]);
-    assert!(err.contains("--watch repeats live views only"), "{err}");
+    assert!(err.contains("unexpected argument '--watch'"), "{err}");
     let err = e.fails("before", &["info", "--watch", "0"]);
     assert!(err.contains("above zero"), "{err}");
     e.before_and_after(&[]);

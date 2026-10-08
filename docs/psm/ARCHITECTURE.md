@@ -181,9 +181,12 @@ stay inside `store`; `Snapshot::id` is the number. The live state
   with `\r` (the cursor never leaves it, so scrolling cannot misplace
   it). No terminal crate: three escape sequences, and a `libc` signal
   handler for SIGINT/SIGTERM/SIGHUP that writes `?1049l` and `_exit`s,
-  so Ctrl-C never leaves the terminal on the alternate screen. It is
-  refused for anything that does not read the live state (`snap` in a
-  loop would fill the database), so `watchable` lists the live views.
+  so Ctrl-C never leaves the terminal on the alternate screen. The
+  option is not global: `WatchArg` is flattened into the live views
+  only (`procs`, `pid`, `info`, `diff`, `report`), so `snap --watch`
+  (a loop that would fill the database) is a parse error and shell
+  completion never offers `--watch` elsewhere. `watch_of` reads it off
+  the command and still refuses a stored snapshot on both sides.
   Ctrl-C ends it the ordinary way; nothing needs cleaning up.
 - **The version line comes first.** `commands::run` prints it before
   any command a person reads, only when stdout is a terminal and the

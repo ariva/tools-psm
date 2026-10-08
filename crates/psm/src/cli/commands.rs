@@ -4,7 +4,7 @@ use std::path::PathBuf;
 
 use clap::{Subcommand, ValueEnum};
 
-use super::args::{CaptureArgs, DiffArgs, FilterArgs, ViewArgs};
+use super::args::{CaptureArgs, DiffArgs, FilterArgs, ViewArgs, WatchArg};
 use super::values::{group_keys, info_tables, metrics};
 
 const REFERENCES: &str = "\
@@ -68,6 +68,8 @@ Examples:
         /// CPU sampling window; 0 = lifetime average [default: 500ms]
         #[arg(long, value_name = "DURATION")]
         interval: Option<String>,
+        #[command(flatten)]
+        watch: WatchArg,
         #[command(subcommand)]
         cmd: Option<ProcsCmd>,
     },
@@ -85,6 +87,8 @@ Examples:
         /// baseline, latest, prev, now, a number, or a label
         #[arg(default_value = "now")]
         snapshot: String,
+        #[command(flatten)]
+        watch: WatchArg,
     },
     /// Live view: system memory information plus the top consumers per metric; nothing is stored
     #[command(after_help = "\
@@ -115,6 +119,8 @@ Examples:
         deep: Option<bool>,
         #[command(flatten)]
         filter: FilterArgs,
+        #[command(flatten)]
+        watch: WatchArg,
     },
     /// New session + baseline snapshot (the active session becomes inactive)
     ///
@@ -385,6 +391,8 @@ Examples:
         /// CPU sampling window; 0 = lifetime average [default: 500ms]
         #[arg(long, value_name = "DURATION")]
         interval: Option<String>,
+        #[command(flatten)]
+        watch: WatchArg,
     },
     /// Processes of one stored snapshot; the options of list apply
     #[command(after_help = REFERENCES)]
@@ -394,6 +402,8 @@ Examples:
         snapshot: String,
         #[command(flatten)]
         view: ViewArgs,
+        #[command(flatten)]
+        watch: WatchArg,
     },
 }
 

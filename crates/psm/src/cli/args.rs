@@ -29,6 +29,26 @@ pub struct FilterArgs {
     pub exclude_regex: Option<String>,
 }
 
+/// `--watch`, only on the views of the live state. Other commands do not
+/// have it, so clap refuses it there and completion never offers it.
+#[derive(Args, Clone, Default)]
+pub struct WatchArg {
+    /// Repeat this live view every DURATION until Ctrl-C [default: 10s]
+    ///
+    /// Clears the screen, runs the command again and counts down to the
+    /// next round. Only the live state can repeat: `now` must be the
+    /// snapshot, or one side of the comparison (the default). A bare
+    /// number is seconds. As JSON nothing is cleared: one document per
+    /// round.
+    #[arg(
+        long,
+        value_name = "DURATION",
+        num_args = 0..=1,
+        default_missing_value = "10s"
+    )]
+    pub watch: Option<String>,
+}
+
 #[derive(Args, Clone)]
 pub struct ViewArgs {
     /// Words to look for in the pid, name, executable path or command line;
@@ -99,4 +119,6 @@ pub struct DiffArgs {
     pub min_delta: Option<String>,
     #[command(flatten)]
     pub filter: FilterArgs,
+    #[command(flatten)]
+    pub watch: WatchArg,
 }
