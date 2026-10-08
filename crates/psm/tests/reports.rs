@@ -2,7 +2,7 @@
 
 mod common;
 
-use serde_json::Value;
+use serde_json::{Value, json};
 
 use common::*;
 
@@ -68,9 +68,6 @@ fn reports_and_export() {
     assert!(!private.contains("cmdline") && !private.contains("--type=renderer"));
     let dump = e.json("after", &["sessions", "export"]);
     assert_eq!(dump["snapshots"][1]["meminfo"]["HugePages_Total"], 2);
-    // The writing psm is recorded: version, build date, commit, schema.
-    assert_eq!(dump["psm"]["version"], env!("CARGO_PKG_VERSION"));
-    assert!(dump["psm"]["schema"].as_i64().unwrap() >= 3 && dump["psm"]["commit"].is_string());
     assert_eq!(
         dump["snapshots"][1]["cgroups"][3]["memory_current"],
         500 * MIB
@@ -188,4 +185,130 @@ fn brief_is_the_diff_on_one_line() {
         e.fails("after", &["report", "growth", "--brief"])
             .contains("--brief is for `psm diff`")
     );
+}
+
+#[test]
+fn json_envelope() {
+    let e = Env::new("envelope");
+    e.before_and_after(&[]);
+    let raw = |args: &[&str]| -> Value { serde_json::from_str(&e.ok("after", args)).unwrap() };
+    // Every test run passes --config and --proc-root; they are options too.
+    let given = |doc: &Value| -> Value {
+        let mut o = doc["options"].clone();
+        for harness in ["config", "proc_root"] {
+            o.as_object_mut().unwrap().remove(harness);
+        }
+        o
+    };
+    let doc = raw(&[
+        "diff",
+        "prev",
+        "--memory",
+        "--min-delta",
+        "10M",
+        "--group",
+        "app",
+        "--name",
+        "code",
+        "--json",
+    ]);
+    // The writing psm: version, build date, commit, schema.
+    assert_eq!(doc["psm"]["version"], env!("CARGO_PKG_VERSION"));
+    assert!(doc["psm"]["schema"].as_i64().unwrap() >= 3 && doc["psm"]["commit"].is_string());
+    assert_eq!(doc["command"], "diff");
+    // Options as typed, by id: flags are true, numbers are numbers, --json itself is not one.
+    assert_eq!(
+        given(&doc),
+        json!({ "a": "prev", "memory": true, "min_delta": "10M", "group": "app", "name": "code" })
+    );
+    let started = doc["started"].as_str().unwrap();
+    assert!(
+        started.len() == 20 && started.ends_with('Z') && started.starts_with("20"),
+        "{started}"
+    );
+    assert!(doc["elapsed_ms"].is_u64());
+    assert_eq!(doc["data"]["to"]["label"], "now");
+    // Keys in order: header first, data last.
+    let text = e.ok("after", &["diff", "--json"]);
+    assert!(text.find("\"psm\"").unwrap() < text.find("\"data\"").unwrap());
+
+    // Subcommands join with dots; words and lists are arrays; a pid is a number.
+    let doc = raw(&[
+        "procs", "show", "latest", "code", "rust", "--top", "2", "--json",
+    ]);
+    assert_eq!(doc["command"], "procs.show");
+    assert_eq!(
+        given(&doc),
+        json!({ "snapshot": "latest", "words": ["code", "rust"], "top": 2 })
+    );
+    let doc = raw(&["pid", "100", "--json"]);
+    assert_eq!(given(&doc), json!({ "pid": 100 }));
+    assert_eq!(raw(&["--json"])["command"], "status");
+    assert_eq!(
+        raw(&["-l", "--json"])["command"],
+        "list",
+        "letter forms resolve to the command"
+    );
+
+    // safe: no descriptions, no paths; none: no block. The flag beats the config.
+    let doc = raw(&["snap", "three", "pw is hunter2", "--deep", "--json=safe"]);
+    assert_eq!(
+        doc["options"],
+        json!({ "label": "three", "deep": true }),
+        "paths are out too"
+    );
+    let doc = raw(&["snap", "four", "pw is hunter2", "--json"]);
+    assert_eq!(
+        doc["options"]["description"], "pw is hunter2",
+        "full is the default"
+    );
+    // snap and new answer in JSON too: what was stored, and the digest.
+    assert_eq!(doc["data"]["snapshot"]["label"], "four");
+    assert_eq!(doc["data"]["snapshot"]["description"], "pw is hunter2");
+    assert_eq!(doc["data"]["processes"], 5);
+    assert_eq!(doc["data"]["kernel_threads"], 1);
+    // Same fixture as #3: nothing moved, so no digest.
+    assert!(doc["data"]["top_changes"].is_null());
+    let doc = raw(&["new", "fresh", "--json"]);
+    assert_eq!(doc["data"]["baseline"]["id"], 0);
+    assert_eq!(doc["data"]["previous"], "t");
+    assert!(
+        doc["options"]["proc_root"]
+            .as_str()
+            .unwrap()
+            .contains("fixtures")
+    );
+    let doc = raw(&["diff", "--json=none"]);
+    assert!(doc.get("options").is_none() && doc["data"]["net_change"].is_number());
+    let cfg = std::env::temp_dir().join(format!("psm-test-{}-envelope.toml", std::process::id()));
+    std::fs::write(&cfg, "[display]\njson_options = \"none\"\n").unwrap();
+    let out = e
+        .command("after")
+        .args(["--config", cfg.to_str().unwrap(), "diff", "--json"])
+        .output()
+        .unwrap();
+    let doc: Value = serde_json::from_slice(&out.stdout).unwrap();
+    assert!(
+        doc.get("options").is_none(),
+        "config decides for a bare --json"
+    );
+    std::fs::write(&cfg, "[display]\njson_options = \"loud\"\n").unwrap();
+    let out = e
+        .command("after")
+        .args(["--config", cfg.to_str().unwrap(), "diff", "--json"])
+        .output()
+        .unwrap();
+    assert!(
+        String::from_utf8_lossy(&out.stderr)
+            .contains("display.json_options must be one of full, safe, none")
+    );
+    std::fs::remove_file(&cfg).unwrap();
+    assert!(
+        e.fails("after", &["diff", "--json=loud"])
+            .contains("invalid value")
+    );
+
+    // version --json is the header's psm block as data.
+    let doc = raw(&["version", "--json"]);
+    assert_eq!(doc["data"], doc["psm"]);
 }

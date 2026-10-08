@@ -958,7 +958,7 @@ Global options, accepted everywhere:
 | `--config [path]` | configuration file; also `PSM_CONFIG`. Alone, with no command: same as `psm config` |
 | `--db [path]` | database file; also `PSM_DB`. Alone, with no command: shows the database in use and its schema version |
 | `--kernel` | include kernel threads |
-| `--json` | machine-readable output |
+| `--json[=LEVEL]` | machine-readable output; LEVEL `full`, `safe` or `none` says what its `options` block records, see [the JSON document](#the-json-document) |
 | `--proc-root <dir>` | read process data from a directory instead of `/proc` (tests) |
 
 `--watch [duration]` belongs to the live views (`procs`, `pid`, `info`,
@@ -1010,38 +1010,83 @@ stored in snapshots either way.
 ## Output formats
 
 On a terminal, every command that prints for a person opens with the
-version line (`psm (process snapshot manager) 2.1.5 (built ..., commit
+version line (`psm (process snapshot manager) 3.0.0 (built ..., commit
 ...)`). With `--json`, for `export`, `sessions export`, `completions`,
 or when standard output is a pipe or a file, it is left out, so data
-stays data. Export files carry the same facts in a `psm` block
-(`version`, `built`, `commit`, `schema`); import ignores it.
+stays data.
 
 - Text tables by default.
 - `--json` on any command. Byte values are raw numbers.
 - `--csv` on `list` and `show`.
 - `psm sessions export` for a whole session.
 
+### The JSON document
+
+Every `--json` document, export files included, is one shape: a header
+that says which psm wrote it, what was run and when, then the command's
+result under `data`.
+
 ```bash
-psm diff --memory --top 1 --json
+psm diff prev --memory --min-delta 10M --group app --name slack --json
 ```
 
 ```json
 {
-  "from": { "id": 0, "label": "baseline" },
-  "memory": [
-    {
-      "after": 360710144,
-      "before": 851443712,
-      "delta": -490733568,
-      "pid": 310,
-      "process": "rust-analyzer",
-      "status": "restarted"
-    }
-  ],
-  "metric": "RSS + swap",
-  "net_change": -37748736,
-  "to": { "id": null, "label": "now" }
+  "psm": { "version": "3.0.0", "built": "2026-10-07", "commit": "9c9c0bf", "schema": 3 },
+  "command": "diff",
+  "options": { "a": "prev", "memory": true, "min_delta": "10M", "group": "app", "name": "slack" },
+  "started": "2026-10-07T21:55:03Z",
+  "elapsed_ms": 512,
+  "data": {
+    "from": { "id": 2, "label": "after-update" },
+    "to": { "id": null, "label": "now" },
+    "metric": "RSS + swap",
+    "net_change": -37748736,
+    "memory": [
+      { "process": "slack", "pid": 231649, "status": "running", "before": 851443712, "after": 360710144, "delta": -490733568 }
+    ]
+  }
 }
+```
+
+| Field | Meaning |
+|---|---|
+| `psm` | the writing psm: `version`, `built` (date), `commit`, `schema` (database version). A server stores or checks these |
+| `command` | the command that ran, subcommands joined with dots: `diff`, `procs.show`, `sessions.export`, `report.trend`; `-d` resolves to `diff`, a bare `psm` is `status` |
+| `options` | what was typed, by option name: `true` for a flag, numbers as numbers, lists as arrays. Only options actually given; defaults from the config file are not repeated. `--json` itself is left out |
+| `started` | start of the run, UTC, `YYYY-MM-DDTHH:MM:SSZ` (the database's format) |
+| `elapsed_ms` | from start to this document, in milliseconds. A live view includes its CPU sampling window (`--interval`, 500 ms by default) |
+| `data` | the command's result: an array for `procs`, `list`, `faq`; an object for `diff`, `report`, `info`, `pid`, `status`, exports |
+
+`jq .data` strips the header. With `--watch --json` every round is one
+document with its own `started` and `elapsed_ms`.
+
+What `options` records is a level, `--json=LEVEL` for one run or
+`display.json_options` in the config file for every run (default `full`):
+
+| Level | `options` |
+|---|---|
+| `full` | every option and value as typed (default) |
+| `safe` | without descriptions (`new`, `snap`, `rename`) and the `--db`, `--config`, `--proc-root` paths: for documents posted to a shared server |
+| `none` | no `options` block |
+
+The same `psm snap after-update "pw is hunter2" --deep --db /tmp/trial.db --json=...` under each:
+
+```json
+full:  "options": { "label": "after-update", "description": "pw is hunter2", "deep": true, "db": "/tmp/trial.db" }
+safe:  "options": { "label": "after-update", "deep": true }
+none:  (no options key)
+```
+
+`snap` and `new` answer in JSON as well: the session, what was stored
+(`id`, `label`, `description`), the process counts, and for `snap` the
+`top_changes` digest (`since`, `metric`, `rows`) when something moved.
+`psm version --json` puts the `psm` block under `data`.
+
+```bash
+psm procs slack --sort cpu --top 5 --json | jq '.data[] | {pid, name}'
+psm diff --json=none | jq .data.net_change
+psm snap nightly --json=safe | curl -sS -X POST -H 'Content-Type: application/json' -d @- "$URL"
 ```
 
 Exit codes: `0` success, `2` usage error or failure. `1` is reserved
@@ -1059,12 +1104,15 @@ psm report trend --json | curl -sS -X POST -H "Authorization: Bearer $TOKEN" -d 
 psm sessions export --format csv | curl -sS -X POST -H 'Content-Type: text/csv' --data-binary @- "$URL"
 ```
 
-The export carries `hostname`, the session and the `psm` block, so
-documents from several machines can be told apart; a `diff` or `report`
-does not, so add them yourself (`-H "X-Host: $(hostname)"`). `psm snap`
-prints its digest as text only; after a snapshot, send
-`psm diff prev --json`. A `--watch --json` run prints one document per
-round, so a `while read` loop over it posts each round as it comes.
+Every document carries the header (which psm, which command and
+options, when); the export's `data` also carries `hostname` and the
+session. A `diff` or `report` names no machine, so add it yourself
+(`-H "X-Host: $(hostname)"`). `psm snap --json` is a document too (what
+was stored, plus the digest), so one line both snapshots and posts.
+Set `display.json_options = "safe"` on machines that post, or pass
+`--json=safe`, to keep descriptions and local paths out. A `--watch
+--json` run prints one document per round, so a `while read` loop over
+it posts each round as it comes.
 
 ## Configuration
 
@@ -1105,6 +1153,7 @@ top = 30              #                              (--top)
 group = "name"        #                              (--group; "pid" = none)
 kernel = false        #                              (--kernel)
 interval = "500ms"    #                              (--interval)
+json_options = "full" # full, safe, none             (--json=LEVEL)
 
 [diff]
 metric = "total"      # total, anon, pss             (--metric)

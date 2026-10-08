@@ -2,12 +2,13 @@
 //! never-stored live snapshot behind `now`.
 
 use anyhow::{Result, bail};
+use serde_json::json;
 
-use super::{Ctx, census};
+use super::{Ctx, census, counts};
 use crate::cli::CaptureArgs;
 use crate::config;
 use crate::model::Snapshot;
-use crate::output::out;
+use crate::output::{out, print_json};
 
 /// `psm new`: a session with its baseline.
 pub fn new_session(
@@ -21,23 +22,43 @@ pub fn new_session(
     let snapshot = ctx.capture(capture)?;
     let description = description.filter(|d| !d.is_empty());
     let (session, id) = db.init(name.as_deref(), description.as_deref(), &snapshot)?;
-    if let Some(p) = previous {
-        out(format!("Session {:?} is now inactive.", p.name));
+    if ctx.json {
+        let (processes, kernel_threads) = counts(&snapshot);
+        print_json(&json!({
+            "session": session.name,
+            "description": session.description,
+            "baseline": { "id": id, "label": "baseline" },
+            "processes": processes,
+            "kernel_threads": kernel_threads,
+            "previous": previous.as_ref().map(|p| p.name.clone()),
+        }));
+    } else {
+        if let Some(p) = previous {
+            out(format!("Session {:?} is now inactive.", p.name));
+        }
+        out(format!(
+            "Session {:?} started. Baseline snapshot #{id}: {}.",
+            session.name,
+            census(&snapshot)
+        ));
     }
-    out(format!(
-        "Session {:?} started. Baseline snapshot #{id}: {}.",
-        session.name,
-        census(&snapshot)
-    ));
     // First use: leave a config file behind so the settings are discoverable.
     if ctx.default_config
         && let Some(path) = config::default_path().filter(|p| !p.exists())
     {
         match config::create(&path) {
-            Ok(()) => out(format!(
-                "Created config file {} with the default settings.",
-                path.display()
-            )),
+            Ok(()) => {
+                let note = format!(
+                    "Created config file {} with the default settings.",
+                    path.display()
+                );
+                // Never inside a JSON document.
+                if ctx.json {
+                    eprintln!("{note}")
+                } else {
+                    out(note)
+                }
+            }
             Err(e) => eprintln!("warning: {e:#}"),
         }
     }
@@ -60,14 +81,39 @@ pub fn snap(
     snapshot.description = description.filter(|d| !d.is_empty());
     snapshot.id = db.snap(session.id, label.as_deref(), &snapshot)?;
     snapshot.label = label;
+    // Who moved memory the most since the previous snapshot.
+    let digest = match previous {
+        Some(prev) => {
+            let prev = db.load(prev)?;
+            super::compare::snap_digest(ctx, &prev, &snapshot)?
+                .map(|(metric, table)| (prev.title(), metric, table))
+        }
+        None => None,
+    };
+    if ctx.json {
+        let (processes, kernel_threads) = counts(&snapshot);
+        print_json(&json!({
+            "session": session.name,
+            "snapshot": { "id": snapshot.id, "label": snapshot.label, "description": snapshot.description },
+            "processes": processes,
+            "kernel_threads": kernel_threads,
+            "top_changes": digest.map(|(since, metric, table)| json!({
+                "since": since, "metric": metric, "rows": table.json(),
+            })),
+        }));
+        return Ok(());
+    }
     out(format!(
         "Snapshot {} in session {:?}: {}.",
         snapshot.title(),
         session.name,
         census(&snapshot)
     ));
-    if let Some(prev) = previous {
-        super::compare::snap_summary(ctx, &db.load(prev)?, &snapshot)?;
+    if let Some((since, metric, table)) = digest {
+        out(format!(
+            "\nTop memory changes since {since} ({metric}):\n{}",
+            table.render()
+        ));
     }
     Ok(())
 }

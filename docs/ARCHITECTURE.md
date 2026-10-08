@@ -18,8 +18,13 @@ crates/
 
 Every `psm` command prints a table that also renders as JSON (`--json`)
 and CSV (`--csv`); that output is the interface the other tools use.
-It is stable in the sense a command line is: a column is added, never
-renamed or removed, within a major version. A tool that needs a figure
+A JSON document is always the same envelope: `psm` (version, build,
+commit, schema), `command` (`procs.show`), `options` (what was typed),
+`started`, `elapsed_ms`, and the result under `data`. A consumer
+switches on `command`, checks `psm.version` or `psm.schema`, and reads
+`data`; it never parses argv. The shape is stable in the sense a
+command line is: a field is added, never renamed or removed, within a
+major version. A tool that needs a figure
 `psm` does not print gets it by a change in `psm`, documented in
 [psm/USAGE.md](psm/USAGE.md), not by reaching into its code.
 

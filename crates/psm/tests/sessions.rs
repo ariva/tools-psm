@@ -181,7 +181,7 @@ fn export_then_import_round_trips() {
     assert_eq!(copy["to"]["label"], "now");
     e.ok("after", &["sessions", "activate", "t"]);
     // Re-exporting the copy gives the same snapshots; only the ids are new.
-    let original: Value = serde_json::from_str(&dump).unwrap();
+    let original = serde_json::from_str::<Value>(&dump).unwrap()["data"].take();
     let again = e.json("after", &["sessions", "export", "copy"]);
     for i in 0..2 {
         for part in [
@@ -236,7 +236,7 @@ fn export_then_import_round_trips() {
 
     // --all: every session in one file, imported in one go, atomically.
     let everything = e.ok("after", &["sessions", "export", "--all"]);
-    let parsed: Value = serde_json::from_str(&everything).unwrap();
+    let parsed = serde_json::from_str::<Value>(&everything).unwrap()["data"].take();
     assert_eq!(
         parsed["sessions"].as_array().unwrap().len(),
         2,
@@ -330,7 +330,7 @@ fn snapshot_group() {
 
     // One snapshot out, into another session and back into this one.
     let dump = e.ok("after", &["export", "2"]);
-    let v: Value = serde_json::from_str(&dump).unwrap();
+    let v = serde_json::from_str::<Value>(&dump).unwrap()["data"].take();
     assert_eq!(v["snapshots"].as_array().unwrap().len(), 1);
     assert_eq!(v["snapshots"][0]["label"], "two");
     let file = std::env::temp_dir().join(format!("psm-test-{}-snap.json", std::process::id()));

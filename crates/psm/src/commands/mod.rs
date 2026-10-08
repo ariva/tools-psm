@@ -23,7 +23,7 @@ use crate::cli::{
 use crate::collect::procfs as collector;
 use crate::config::{self, Config};
 use crate::model::{Filter, Snapshot};
-use crate::output::{Table, out, parse_duration, print_json};
+use crate::output::{JsonOptions, Table, build_info, out, parse_duration, print_json};
 use crate::store::Db;
 
 /// Settings after merging flags, environment and the configuration file.
@@ -153,13 +153,16 @@ impl Ctx {
     }
 }
 
+/// (user processes, kernel threads)
+pub fn counts(s: &Snapshot) -> (usize, usize) {
+    let kthreads = s.processes.iter().filter(|p| p.kthread).count();
+    (s.processes.len() - kthreads, kthreads)
+}
+
 /// `288 processes (+302 kernel)`
 pub fn census(s: &Snapshot) -> String {
-    let kthreads = s.processes.iter().filter(|p| p.kthread).count();
-    format!(
-        "{} processes (+{kthreads} kernel)",
-        s.processes.len() - kthreads
-    )
+    let (procs, kthreads) = counts(s);
+    format!("{procs} processes (+{kthreads} kernel)")
 }
 
 pub fn note_restricted(restricted: usize, s: &Snapshot) {
@@ -298,9 +301,15 @@ fn prints_data(cmd: &Option<Cmd>) -> bool {
 }
 
 pub fn run(cli: Cli) -> Result<()> {
+    // `--json=LEVEL` wins; the config file decides for a bare `--json`,
+    // once it is loaded. Until then (faq, version) the flag or `full`.
+    if let Some(Some(level)) = &cli.json {
+        crate::output::json_level(JsonOptions::parse(level)?);
+    }
     // Every command a person reads opens with the version line; data for
     // pipes and scripts (--json, exports, a redirected stdout) stays clean.
-    if !cli.json && !prints_data(&cli.cmd) && std::io::IsTerminal::is_terminal(&std::io::stdout()) {
+    if !cli.json() && !prints_data(&cli.cmd) && std::io::IsTerminal::is_terminal(&std::io::stdout())
+    {
         out(format!("{}\n", crate::cli::commands::VERSION_LINE));
     }
     // Handled before loading the configuration: these must work without one.
@@ -317,14 +326,18 @@ pub fn run(cli: Cli) -> Result<()> {
         return setup::update(&cli);
     }
     if let Some(Cmd::Faq { words }) = &cli.cmd {
-        faq::faq(words, cli.json);
+        faq::faq(words, cli.json());
         return Ok(());
     }
     if let Some(Cmd::Help { command }) = &cli.cmd {
         return help(command);
     }
     if let Some(Cmd::Version) = &cli.cmd {
-        out(crate::cli::commands::version());
+        if cli.json() {
+            print_json(&build_info());
+        } else {
+            out(crate::cli::commands::version());
+        }
         return Ok(());
     }
     if let Some(Cmd::Completions { shell }) = cli.cmd {
@@ -337,8 +350,11 @@ pub fn run(cli: Cli) -> Result<()> {
     let default_config = config_path.is_none();
     let cfg = config::load(config_path.as_deref())?;
     crate::output::set_units(&cfg.display.units)?;
+    if let Some(None) = cli.json {
+        crate::output::json_level(JsonOptions::parse(&cfg.display.json_options)?);
+    }
     let ctx = Ctx {
-        json: cli.json,
+        json: cli.json(),
         kernel: cli.kernel.unwrap_or(cfg.display.kernel),
         proc_root: cli.proc_root,
         db_path: db_flag,
@@ -367,6 +383,7 @@ fn watch(ctx: &Ctx, cmd: Cmd, every: &str) -> Result<()> {
         loop {
             dispatch(ctx, cmd.clone())?;
             std::thread::sleep(every);
+            crate::output::json_round();
         }
     }
     // The alternate screen, as `watch(1)` and `top` use it: frames never

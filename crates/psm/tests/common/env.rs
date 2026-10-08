@@ -51,8 +51,17 @@ impl Env {
         String::from_utf8(o.stdout).unwrap()
     }
 
+    /// The `data` of a JSON document; the envelope around it is checked here
+    /// once for every call, and in detail by `json_envelope` in reports.rs.
     pub fn json(&self, fixture: &str, args: &[&str]) -> Value {
-        serde_json::from_str(&self.ok(fixture, args)).unwrap()
+        let mut v: Value = serde_json::from_str(&self.ok(fixture, args)).unwrap();
+        assert!(
+            v["psm"]["version"].is_string()
+                && v["command"].is_string()
+                && v["elapsed_ms"].is_number(),
+            "psm {args:?}: not an envelope: {v}"
+        );
+        v["data"].take()
     }
 
     /// Exit code 2 and the error text.

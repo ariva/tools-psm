@@ -76,7 +76,7 @@ not a rate.
 
 | # | Question | Command | More |
 |---|---|---|---|
-| 5.1 | How do I get exact numbers for a script? | add `--json` to any command | [output formats](USAGE.md#output-formats) |
+| 5.1 | How do I get exact numbers for a script? | add `--json` to any command; the result is under `data` | [the JSON document](USAGE.md#the-json-document) |
 | 5.2 | How do I see PSS instead of RSS? | `psm procs --deep`, `psm snap --deep` | [reading the numbers](USAGE.md#reading-the-numbers) |
 | 5.3 | Why is a value `n/a`? | other users' processes: run with `sudo` for full data | [privileges](USAGE.md#privileges) |
 | 5.4 | How do I keep passwords out of the database? | `psm snap --no-cmdline` | [capturing](USAGE.md#capturing) |

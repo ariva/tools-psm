@@ -53,6 +53,7 @@ The `psm` tool talks to other external tools through its `--json` output and sha
 
 `psm faq` prints the questions-to-commands table; `psm <command> --help` lists every option.
 Some commands have a letter: `psm -s` is `psm snap` (`psm -h` shows them). Double dashes are options.
+`--json` wraps every result in one document: a header (`psm` version, `command`, `options`, `started`, `elapsed_ms`) and the result under `data`; `--json=safe` keeps descriptions and paths out.
 
 Then [docs/psm/USAGE.md](docs/psm/USAGE.md) for every option and
 worked examples, [docs/psm/FAQ.md](docs/psm/FAQ.md) for questions and

@@ -27,7 +27,7 @@ fn config_file_rules() {
             .unwrap()
     };
     let first = |o: &Output| -> Value {
-        serde_json::from_slice::<Value>(&o.stdout).unwrap()[0]["command"].clone()
+        serde_json::from_slice::<Value>(&o.stdout).unwrap()["data"][0]["command"].clone()
     };
 
     let kernel = file("kernel.toml", "[display]\nkernel = true\n");

@@ -23,21 +23,19 @@ fn dump(session: &Session, snapshots: &[Snapshot], cmdline: bool) -> Result<Valu
     Ok(json!({ "session": session, "snapshots": snaps }))
 }
 
-/// A session export: the writing psm (version, build, commit, schema) first,
-/// then the session and its snapshots. `from_json` ignores the `psm` block.
+/// A session export: the session and its snapshots. The envelope around
+/// it (`print_json`) names the writing psm; `from_json` ignores that.
 pub fn to_json(session: &Session, snapshots: &[Snapshot], cmdline: bool) -> Result<Value> {
-    let mut v = dump(session, snapshots, cmdline)?;
-    v["psm"] = crate::cli::commands::build_info();
-    Ok(v)
+    dump(session, snapshots, cmdline)
 }
 
-/// `psm sessions export --all`: every session, one `psm` block for the file.
+/// `psm sessions export --all`: every session in one file.
 pub fn all_to_json(sessions: &[(Session, Vec<Snapshot>)], cmdline: bool) -> Result<Value> {
     let dumps = sessions
         .iter()
         .map(|(s, snaps)| dump(s, snaps, cmdline))
         .collect::<Result<Vec<_>>>()?;
-    Ok(json!({ "psm": crate::cli::commands::build_info(), "sessions": dumps }))
+    Ok(json!({ "sessions": dumps }))
 }
 
 /// One row per process per snapshot. Columns are the `Proc` fields, so a new
@@ -88,12 +86,17 @@ struct DumpAll {
 }
 
 /// Reads what `to_json` or `all_to_json` wrote: one or more sessions, each
-/// as its name and snapshots.
+/// as its name and snapshots. Inside the envelope (3.0) or bare (older files).
 pub fn from_json(text: &str) -> Result<Vec<crate::store::sessions::Export>> {
-    let dumps = match serde_json::from_str::<Dump>(text) {
+    let mut v: Value = serde_json::from_str(text)
+        .context("not a psm export: expected the JSON written by `psm sessions export`")?;
+    if let Some(data) = v.get_mut("data") {
+        v = data.take();
+    }
+    let dumps = match serde_json::from_value::<Dump>(v.clone()) {
         Ok(one) => vec![one],
         Err(_) => {
-            serde_json::from_str::<DumpAll>(text)
+            serde_json::from_value::<DumpAll>(v)
                 .context("not a psm export: expected the JSON written by `psm sessions export`")?
                 .sessions
         }

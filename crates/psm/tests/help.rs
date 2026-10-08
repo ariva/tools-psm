@@ -177,7 +177,7 @@ fn commands_have_flag_forms() {
         help.contains("--json") && !diff.contains("--json"),
         "{diff}"
     );
-    assert!(e.ok("before", &["faq", "6.4", "--json"]).starts_with('['));
+    assert!(e.json("before", &["faq", "6.4", "--json"]).is_array());
     assert_eq!(
         e.ok("before", &["-h", "diff"]),
         e.ok("before", &["diff", "-h"])

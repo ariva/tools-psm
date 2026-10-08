@@ -108,14 +108,27 @@ pub struct Cli {
     #[arg(long, global = true, help_heading = "Global options", num_args = 0..=1, require_equals = true, default_missing_value = "true", value_name = "BOOL")]
     pub kernel: Option<bool>,
 
-    /// Machine-readable output
+    /// Machine-readable output; LEVEL: what its `options` block records
     ///
-    /// Print JSON instead of tables. Sizes are raw bytes, missing values
-    /// are null. Works with every command that prints a table.
+    /// Print JSON instead of tables: one document with a header (the
+    /// writing psm, the command, the options given, when it started and
+    /// how long it took) and the result under `data`. Sizes are raw
+    /// bytes, missing values are null. LEVEL is `full` (every option as
+    /// typed), `safe` (without descriptions and the --db/--config/
+    /// --proc-root paths) or `none` (no options block); without `=LEVEL`
+    /// the config key display.json_options decides [default: full].
     ///
-    /// Example: psm diff --json | jq .top.groups
-    #[arg(long, global = true, help_heading = "Global options")]
-    pub json: bool,
+    /// Example: psm diff --json | jq .data.top
+    #[arg(
+        long,
+        global = true,
+        help_heading = "Global options",
+        num_args = 0..=1,
+        require_equals = true,
+        value_name = "LEVEL",
+        value_parser = crate::output::JsonOptions::NAMES
+    )]
+    pub json: Option<Option<String>>,
 
     #[command(subcommand)]
     pub cmd: Option<Cmd>,
@@ -189,10 +202,87 @@ pub fn command() -> clap::Command {
 }
 
 pub fn parse() -> Cli {
-    Cli::from_arg_matches(&command().get_matches()).unwrap_or_else(|e| e.exit())
+    let cmd = command();
+    let matches = cmd.clone().get_matches();
+    let (path, options) = given(&cmd, &matches);
+    crate::output::json_begin(path, options);
+    Cli::from_arg_matches(&matches).unwrap_or_else(|e| e.exit())
+}
+
+/// The command path (`procs.show`, `status` for a bare `psm`) and every
+/// option that came from the command line, by its id, with its value:
+/// `true` for a flag, a number when it reads as one, else the text, a list
+/// when the option takes several. `--json` and help are left out.
+fn given(
+    cmd: &clap::Command,
+    matches: &clap::ArgMatches,
+) -> (String, serde_json::Map<String, serde_json::Value>) {
+    use clap::parser::ValueSource;
+    use serde_json::Value;
+    let scalar = |raw: &std::ffi::OsStr| -> Value {
+        let text = raw.to_string_lossy();
+        match text.as_ref() {
+            "true" => Value::Bool(true),
+            "false" => Value::Bool(false),
+            t => t
+                .parse::<i64>()
+                .map_or_else(|_| Value::String(t.to_string()), Value::from),
+        }
+    };
+    let mut path = Vec::new();
+    let mut options = serde_json::Map::new();
+    let (mut cmd, mut m) = (cmd, matches);
+    loop {
+        for arg in cmd.get_arguments() {
+            let id = arg.get_id().as_str();
+            if ["json", "help"].contains(&id)
+                || options.contains_key(id)
+                || m.value_source(id) != Some(ValueSource::CommandLine)
+            {
+                continue;
+            }
+            let value = match arg.get_action() {
+                ArgAction::SetTrue | ArgAction::SetFalse => Value::Bool(m.get_flag(id)),
+                ArgAction::Count => Value::from(m.get_count(id)),
+                ArgAction::Help
+                | ArgAction::HelpShort
+                | ArgAction::HelpLong
+                | ArgAction::Version => continue,
+                _ => {
+                    let mut values: Vec<Value> =
+                        m.get_raw(id).into_iter().flatten().map(scalar).collect();
+                    if values.len() == 1 && arg.get_num_args().is_none_or(|n| n.max_values() <= 1) {
+                        values.pop().unwrap()
+                    } else {
+                        Value::Array(values)
+                    }
+                }
+            };
+            options.insert(id.to_string(), value);
+        }
+        match m.subcommand() {
+            Some((name, sub)) => {
+                path.push(name.to_string());
+                cmd = cmd
+                    .find_subcommand(name)
+                    .expect("a matched subcommand exists");
+                m = sub;
+            }
+            None => break,
+        }
+    }
+    if path.is_empty() {
+        path.push("status".into());
+    }
+    (path.join("."), options)
 }
 
 impl Cli {
+    /// `--json` in any form.
+    pub fn json(&self) -> bool {
+        self.json.is_some()
+    }
+
     /// The configuration file to read: `--config PATH`, else `PSM_CONFIG`;
     /// `None` means the default location. A bare `--config` counts as absent
     /// here (clap then skips the environment fallback, so it is read by hand).

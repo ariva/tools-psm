@@ -81,7 +81,7 @@ Nothing below `commands` knows about clap.
 | `analysis/diff.rs` | Classifies processes between two snapshots and builds the comparison tables. |
 | `analysis/view.rs` | The table of one snapshot: filter, group, sort, cut; `%CPU` formulas. |
 | `analysis/reports.rs` | System header, `status`, and the meminfo, cpu, timeline and trend reports. |
-| `output/mod.rs` | `out` (pipe-safe printing), `print_json`. |
+| `output/mod.rs` | `out` (pipe-safe printing); `print_json` and the envelope every JSON document gets (`psm`, `command`, `options`, `started`, `elapsed_ms`, `data`); `build_info`; the UTC timestamp without a time crate. |
 | `output/table.rs` | `Table` and `Cell`: one definition rendered as text, JSON or CSV. |
 | `output/units.rs` | Binary units, size and duration parsing. |
 | `output/export.rs` | Session dump as JSON or CSV, and reading the JSON dump back. |
@@ -191,7 +191,16 @@ stay inside `store`; `Snapshot::id` is the number. The live state
 - **The version line comes first.** `commands::run` prints it before
   any command a person reads, only when stdout is a terminal and the
   command is not data (`--json`, `export`, `completions`, `help`,
-  `version`). Export files record the writing psm in a `psm` block.
+  `version`).
+- **Every JSON document is the envelope.** `cli::parse` records the
+  command path and the options that came from the command line (from
+  clap's matches: ids, raw values, the subcommand chain; no per-command
+  code) before the `Cli` struct is built; `print_json` wraps whatever a
+  command gives it, so a new command is enveloped without knowing. The
+  level (`full`, `safe`, `none`) is the flag's `=LEVEL`, else the config
+  key once the file is loaded. `--watch` resets the clock per round.
+  Export files are the same envelope with the dump under `data`;
+  `from_json` also reads the pre-3.0 bare shape.
 - **Export and import are one format.** `Snapshot` and `Proc` derive
   both `Serialize` and `Deserialize`, so the JSON dump is the model
   itself and a new field travels both ways without extra code. Import
@@ -290,8 +299,11 @@ Every table is a `format::Table` of typed cells (`Text`, `Int`,
 So there is one place where a column is defined and no separate JSON
 structs to keep in step.
 
-All output goes through `format::out`, which exits quietly when the
-pipe is closed (`psm procs | head`).
+All output goes through `output::out`, which exits quietly when the
+pipe is closed (`psm procs | head`). JSON goes through `print_json`,
+which adds the envelope; keys keep insertion order (serde_json
+`preserve_order`), so the header comes first and a row's keys follow
+the table's columns.
 
 ## Configuration
 

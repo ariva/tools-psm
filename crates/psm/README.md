@@ -65,6 +65,7 @@ Linux only. The Cargo package is `tool-psm`; the binary is `psm`.
 
 `psm faq` prints the questions-to-commands table; `psm <command> --help` lists every option.
 Some commands have a letter: `psm -s` is `psm snap` (`psm -h` shows them). Double dashes are options.
+`--json` wraps every result in one document: a header (`psm` version, `command`, `options`, `started`, `elapsed_ms`) and the result under `data`; `--json=safe` keeps descriptions and paths out.
 
 ## Documentation
 

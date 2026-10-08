@@ -351,16 +351,6 @@ pub fn version() -> String {
     VERSION_LINE.to_string()
 }
 
-/// The same facts as fields, for the export files.
-pub fn build_info() -> serde_json::Value {
-    serde_json::json!({
-        "version": env!("CARGO_PKG_VERSION"),
-        "built": env!("PSM_BUILD_DATE"),
-        "commit": env!("PSM_GIT_HASH"),
-        "schema": crate::store::SCHEMA_VERSION,
-    })
-}
-
 #[derive(Clone, Subcommand)]
 pub enum InitCmd {
     /// Delete the database and the config file, then set everything up fresh (asks first)

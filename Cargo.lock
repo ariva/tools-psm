@@ -583,6 +583,7 @@ version = "1.0.151"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c841b55ecdae098c80dcae9cf767f6f8a0c2cdb3416bbef72181df4d0fe73f14"
 dependencies = [
+ "indexmap",
  "itoa",
  "memchr",
  "serde",
@@ -692,7 +693,7 @@ checksum = "7d56353a2a665ad0f41a421187180aab746c8c325620617ad883a99a1cbe66d2"
 
 [[package]]
 name = "tool-psm"
-version = "2.2.0"
+version = "3.0.0"
 dependencies = [
  "anyhow",
  "clap",
@@ -708,15 +709,15 @@ dependencies = [
 
 [[package]]
 name = "tool-psm-gui"
-version = "2.2.0"
+version = "3.0.0"
 
 [[package]]
 name = "tool-psm-server"
-version = "2.2.0"
+version = "3.0.0"
 
 [[package]]
 name = "tool-psm-tui"
-version = "2.2.0"
+version = "3.0.0"
 
 [[package]]
 name = "unicode-ident"

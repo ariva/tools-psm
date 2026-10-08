@@ -163,7 +163,7 @@ const FAQ: &[(&str, &[(&str, &str)])] = &[
         &[
             (
                 "How do I get exact numbers for a script?",
-                "add --json to any command",
+                "add --json to any command; the result is under data",
             ),
             (
                 "How do I see PSS instead of RSS?",

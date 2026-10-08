@@ -519,8 +519,14 @@ fn compare(
     Ok(())
 }
 
-/// Printed right after `psm snap`: who moved memory the most since the previous snapshot.
-pub fn snap_summary(ctx: &Ctx, previous: &Snapshot, current: &Snapshot) -> Result<()> {
+/// For `psm snap`: who moved memory the most since the previous snapshot,
+/// as (the metric's label, the table). `None` across a reboot or when
+/// nothing moved.
+pub fn snap_digest(
+    ctx: &Ctx,
+    previous: &Snapshot,
+    current: &Snapshot,
+) -> Result<Option<(String, Table)>> {
     let mut s = diff_settings(ctx, previous, current, &DiffArgs::default())?;
     if s.metric == Metric::Pss && !(previous.deep && current.deep) {
         s.metric = Metric::Total;
@@ -529,17 +535,10 @@ pub fn snap_summary(ctx: &Ctx, previous: &Snapshot, current: &Snapshot) -> Resul
     s.group = None;
     let d = Diff::new(previous, current, &s.filter);
     if !d.same_boot {
-        return Ok(());
+        return Ok(None);
     }
     let (table, _, label) = memory_impact(&d, &s, None);
-    if !table.rows.is_empty() {
-        out(format!(
-            "\nTop memory changes since {} ({label}):\n{}",
-            previous.title(),
-            table.render()
-        ));
-    }
-    Ok(())
+    Ok((!table.rows.is_empty()).then_some((label.to_string(), table)))
 }
 
 /// Sessions are compared by program, never by PID: the latest snapshot of each.
