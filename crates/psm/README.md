@@ -17,7 +17,8 @@ psm diff prev --memory      # who moved memory since the last snapshot
 ## Install
 
 ```bash
-just install                # cargo install --path crates/psm --force --locked  ->  ~/.cargo/bin/psm
+cargo install --git https://github.com/ariva/tools-psm tool-psm --locked   # from GitHub, no checkout
+just install                # from a checkout: cargo install --path crates/psm --force --locked
 ```
 
 Then, once:
