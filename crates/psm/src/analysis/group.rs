@@ -63,12 +63,26 @@ fn is_launcher(name: &str) -> bool {
     LAUNCHERS.contains(&name) || LAUNCHER_PREFIXES.iter().any(|p| name.starts_with(p))
 }
 
+/// Flatpak runs an app in nested `bwrap` sandboxes and spawns helpers from
+/// the portal, so its parent chain never leads to one root. systemd puts the
+/// whole sandbox in `app-flatpak-<app id>-<pid>.scope`; that id is the app.
+fn flatpak_app(cgroup: &str) -> Option<&str> {
+    let leaf = cgroup.rsplit('/').next()?;
+    let id = leaf.strip_prefix("app-flatpak-")?.strip_suffix(".scope")?;
+    let (id, pid) = id.rsplit_once('-')?;
+    (!pid.is_empty() && pid.bytes().all(|b| b.is_ascii_digit())).then_some(id)
+}
+
 /// For every process of a snapshot, the name of the application it belongs to:
-/// the ancestor closest to init that is not a launcher. A process with only
-/// launchers above it (a shell, the desktop itself) is its own application.
+/// its Flatpak app id when it has one, else the ancestor closest to init that
+/// is not a launcher. A process with only launchers above it (a shell, the
+/// desktop itself) is its own application.
 fn app_roots(s: &Snapshot) -> impl Iterator<Item = ((i64, i64), String)> + '_ {
     let by_pid: HashMap<i64, &Proc> = s.processes.iter().map(|p| (p.pid, p)).collect();
     s.processes.iter().map(move |p| {
+        if let Some(id) = p.cgroup.as_deref().and_then(flatpak_app) {
+            return ((p.pid, p.start_time), id.to_string());
+        }
         let mut root = None;
         let mut current = p;
         // The bound only guards against a corrupt parent loop.
@@ -230,5 +244,47 @@ mod tests {
         assert_eq!(app(71), "bash");
         assert_eq!(app(42), "cinnamon");
         assert_eq!(app(1), "systemd");
+    }
+
+    #[test]
+    fn flatpak_app_comes_from_the_systemd_scope() {
+        let scope =
+            |leaf: &str| format!("/user.slice/user-1000.slice/user@1000.service/app.slice/{leaf}");
+        assert_eq!(
+            flatpak_app(&scope("app-flatpak-com.slack.Slack-231634.scope")),
+            Some("com.slack.Slack")
+        );
+        assert_eq!(
+            flatpak_app(&scope("app-gnome-code-1234.scope")),
+            None,
+            "desktop launches keep the ancestry walk"
+        );
+        assert_eq!(flatpak_app(&scope("vte-spawn-3f1a.scope")), None);
+        assert_eq!(flatpak_app(&scope("app-flatpak-x.scope")), None);
+        assert_eq!(flatpak_app("/"), None);
+        // Every layer of the sandbox, the crash handler started by one of them,
+        // and a sandbox the portal spawned share the id; the parent chain does not.
+        let mut s = Snapshot {
+            processes: vec![
+                proc(1, 0, "systemd"),
+                proc(2, 1, "flatpak-portal"),
+                proc(10, 1, "bwrap"),
+                proc(11, 10, "bwrap"),
+                proc(12, 11, "com.slack.Slack"),
+                proc(13, 12, "slack"),
+                proc(14, 11, "chrome_crashpad"),
+                proc(20, 2, "bwrap"),
+                proc(21, 20, "slack"),
+            ],
+            ..Default::default()
+        };
+        for p in &mut s.processes[1..] {
+            p.cgroup = Some(scope("app-flatpak-com.slack.Slack-10.scope"));
+        }
+        let g = Grouper::new("app", &[&s]).unwrap();
+        for p in &s.processes[1..] {
+            assert_eq!(g.key(p), "com.slack.Slack", "pid {}", p.pid);
+        }
+        assert_eq!(g.key(&s.processes[0]), "systemd");
     }
 }

@@ -238,7 +238,11 @@ snapshots of a comparison:
 - `parent` needs the name of the parent process;
 - `app` needs the whole parent chain. For every process it walks up to
   init and keeps the highest ancestor that is not a launcher (shell,
-  terminal, session manager, sandbox wrapper). The result is stored per
+  terminal, session manager, sandbox wrapper). A Flatpak app comes
+  first from its cgroup: systemd puts every sandbox layer, the crash
+  handler and portal-spawned helpers in `app-flatpak-<id>-<pid>.scope`,
+  and the chain cannot join those (the portal's sandboxes hang off
+  `flatpak-portal`, zypak's off a second `bwrap`). The result is stored per
   process instance `(pid, start_time)` and only computed when the key
   is `app`. The key is the application's name, not its PID, so an
   application that restarted between two snapshots still lines up.

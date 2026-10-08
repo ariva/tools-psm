@@ -11,7 +11,7 @@ pub fn group_keys() -> PossibleValuesParser {
         PossibleValue::new("cmdline")
             .help("Full command line: tells apart scripts run by the same interpreter"),
         PossibleValue::new("app").help(
-            "Application: the top-level ancestor, skipping shells, terminals and session managers",
+            "Application: the top-level ancestor, skipping shells, terminals and session managers; the app id for Flatpak apps",
         ),
         PossibleValue::new("user").help("Owner of the process"),
         PossibleValue::new("cgroup")

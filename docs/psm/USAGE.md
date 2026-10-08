@@ -922,6 +922,13 @@ The list of launchers is built in. If your desktop shell or terminal is
 not on it, everything it started shows up as one large app named after
 it.
 
+Flatpak apps do not follow the parent chain: the app runs in nested
+`bwrap` sandboxes, its crash handler hangs off one of them and the
+portal spawns further sandboxes for it. For those, `app` is the Flatpak
+app id (`com.slack.Slack`), read from the systemd scope every process
+of the sandbox shares (`app-flatpak-<id>-<pid>.scope`), so
+`psm procs slack --group app` is one row.
+
 In `diff`, grouping replaces the per-process New, Gone and Restarted
 sections, which do not apply to groups.
 
