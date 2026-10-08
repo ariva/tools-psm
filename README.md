@@ -62,9 +62,25 @@ the command that answers each.
 ## Install
 
 ```bash
-cargo install --git https://github.com/ariva/tools-psm tool-psm --locked   # from GitHub, no checkout
-just install                # from a checkout: cargo install --path crates/psm --force --locked
+# 1. Install the latest psm, same way as in Install:
+cargo install --git https://github.com/ariva/tools-psm tool-psm --locked
+
+# 2. After installing init DB and create first session/snapshot:
 psm init                    # once: config file, database, shell completions
+
+# 3. restart bash to get autocomplete work
+```
+
+## Update
+
+```bash
+# 1. Install the latest psm, same way as in Install:
+cargo install --git https://github.com/ariva/tools-psm tool-psm --locked   # from GitHub
+
+# 2. Then upgrade what the old psm left behind:
+psm update                  # database schema (copy kept), config check, completions
+
+# 3. restart bash to get autocomplete work
 ```
 
 Linux only. The Cargo package is `tool-psm`; the binary is `psm`.

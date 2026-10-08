@@ -32,6 +32,10 @@ missing, and installs tab completion for your shell (from `$SHELL`;
 `--shell zsh` to pick one). Open a new shell afterwards. Running it
 again is safe.
 
+To update, install again the same way, then run `psm update`: it upgrades
+the database in place (a copy is kept), checks the config file and
+refreshes the completions.
+
 Linux only. The Cargo package is `tool-psm`; the binary is `psm`.
 
 ## Commands
