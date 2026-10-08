@@ -1,20 +1,15 @@
-[package]
-name = "tool-psm"
+[workspace]
+resolver = "3"
+members = ["crates/*"]
+
+[workspace.package]
 version = "2.2.0"
 edition = "2024"
 authors = ["Arunas Ivanauskas <arunas.work.hg@gmail.com>"]
-description = "psm (process snapshot manager): named snapshots of the Linux process table and before/after comparison of memory, CPU and process changes"
 license = "MIT"
 repository = "https://github.com/ariva/tool-psm"
-readme = "README.md"
-keywords = ["process", "memory", "snapshot", "diff", "linux"]
-categories = ["command-line-utilities"]
 
-[[bin]]
-name = "psm"
-path = "src/main.rs"
-
-[dependencies]
+[workspace.dependencies]
 anyhow = "1"
 clap = { version = "4", features = ["derive", "env"] }
 clap_complete = "4"

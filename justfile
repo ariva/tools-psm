@@ -4,7 +4,7 @@ default:
 
 # debug build for this machine -> target/debug/psm; extra flags go to cargo
 build *args:
-    cargo build {{args}}
+    cargo build -p tool-psm {{args}}
 
 # lint, then optimised build for this machine -> target/release/psm
 release *args:
@@ -18,23 +18,23 @@ fmt:
 # format check + clippy, warnings are errors
 lint:
     cargo fmt --check
-    cargo clippy --all-targets -- -D warnings
+    cargo clippy --workspace --all-targets -- -D warnings
 
-# unit + integration tests (the latter run the binary against tests/fixtures/proc)
+# unit + integration tests (the latter run the binary against crates/psm/tests/fixtures/proc)
 test:
-    cargo test
+    cargo test --workspace
 
 # everything CI runs
 check: lint test
 
 # run the tool from source: just run list --group comm
 run *args:
-    cargo run -q -- {{args}}
+    cargo run -q -p tool-psm -- {{args}}
 
 # install into ~/.cargo/bin, overwriting any existing binary, deps pinned to Cargo.lock; extra flags pass through.
 # Then `psm update`: database schema, config check, completions, so nothing lags the binary.
 install *args:
-    cargo install --path . --force --locked {{args}}
+    cargo install --path crates/psm --force --locked {{args}}
     psm update
 
 # Static x86_64 builds: one file that runs on any x86_64 Linux, no glibc
@@ -44,7 +44,7 @@ static_target := "x86_64-unknown-linux-musl"
 
 # static x86_64 debug build -> target/x86_64-unknown-linux-musl/debug/psm; extra flags go to cargo
 build-static *args:
-    cargo build --target {{static_target}} {{args}}
+    cargo build -p tool-psm --target {{static_target}} {{args}}
 
 # lint, then static x86_64 release build, the file the install script and tarballs ship
 release-static *args:
@@ -59,7 +59,7 @@ aarch64_target := "aarch64-unknown-linux-musl"
 
 # aarch64 debug build -> target/aarch64-unknown-linux-musl/debug/psm (not runnable here); extra flags go to cross
 build-aarch64 *args:
-    cross build --target {{aarch64_target}} {{args}}
+    cross build -p tool-psm --target {{aarch64_target}} {{args}}
 
 # lint, then aarch64 release build for the release tarball (not runnable here; see test-aarch64)
 release-aarch64 *args:
@@ -69,11 +69,11 @@ release-aarch64 *args:
 
 # the test suite on aarch64, under QEMU
 test-aarch64:
-    cross test --target {{aarch64_target}}
+    cross test --workspace --target {{aarch64_target}}
 
 # regenerate the fake /proc trees the tests read
 fixtures:
-    python3 tests/fixtures/generate.py
+    python3 crates/psm/tests/fixtures/generate.py
 
 # end-to-end new -> snap -> diff against a throwaway database
 smoke:
@@ -81,6 +81,6 @@ smoke:
     set -euo pipefail
     export PSM_DB="$(mktemp --suffix=.db)"
     trap 'rm -f "$PSM_DB"' EXIT
-    cargo run -q -- --config /dev/null new smoke
-    cargo run -q -- --config /dev/null snap after
-    cargo run -q -- --config /dev/null diff
+    cargo run -q -p tool-psm -- --config /dev/null new smoke
+    cargo run -q -p tool-psm -- --config /dev/null snap after
+    cargo run -q -p tool-psm -- --config /dev/null diff

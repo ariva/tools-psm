@@ -1,0 +1,16 @@
+[package]
+name = "tool-psm-tui"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "psm-tui: not built yet (see docs/psm-tui/README.md)"
+# TODO: remove once there is something to publish.
+publish = false
+
+[[bin]]
+name = "psm-tui"
+path = "src/main.rs"
+
+[dependencies]

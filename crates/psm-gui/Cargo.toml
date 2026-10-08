@@ -1,0 +1,16 @@
+[package]
+name = "tool-psm-gui"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "psm-gui: not built yet (see docs/psm-gui/README.md)"
+# TODO: remove once there is something to publish.
+publish = false
+
+[[bin]]
+name = "psm-gui"
+path = "src/main.rs"
+
+[dependencies]

@@ -25,6 +25,10 @@ fn main() {
         .unwrap_or_else(|| "unknown".into());
     println!("cargo:rustc-env=PSM_GIT_HASH={hash}");
     println!("cargo:rustc-env=PSM_BUILD_DATE={date}");
-    println!("cargo:rerun-if-changed=.git/HEAD");
-    println!("cargo:rerun-if-changed=.git/index");
+    // The crate lives under crates/, so ask git where the repository is
+    // instead of assuming `.git` next to this file.
+    if let Some(git_dir) = run("git", &["rev-parse", "--absolute-git-dir"]) {
+        println!("cargo:rerun-if-changed={git_dir}/HEAD");
+        println!("cargo:rerun-if-changed={git_dir}/index");
+    }
 }

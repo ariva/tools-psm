@@ -707,6 +707,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "tool-psm-gui"
+version = "2.2.0"
+
+[[package]]
+name = "tool-psm-server"
+version = "2.2.0"
+
+[[package]]
+name = "tool-psm-tui"
+version = "2.2.0"
+
+[[package]]
 name = "unicode-ident"
 version = "1.0.26"
 source = "registry+https://github.com/rust-lang/crates.io-index"

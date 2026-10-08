@@ -1,5 +1,5 @@
 //! `psm faq`: questions in numbered sections, and the command that answers
-//! each. docs/FAQ.md is the same list; keep the two in step.
+//! each. docs/psm/FAQ.md is the same list; keep the two in step.
 
 use serde_json::{Value, json};
 

@@ -16,8 +16,8 @@ just test             # tests only
 just fmt              # format
 just run list --top 10        # run from source
 just smoke            # new -> snap -> diff on this machine, throwaway database
-just install          # cargo install --path . --force --locked -> ~/.cargo/bin/psm, then psm update
-just fixtures         # regenerate tests/fixtures/proc
+just install          # cargo install --path crates/psm --force --locked -> ~/.cargo/bin/psm, then psm update
+just fixtures         # regenerate crates/psm/tests/fixtures/proc
 
 just release-static   # static x86_64 binary (musl); needs: rustup target add x86_64-unknown-linux-musl, apt install musl-tools
 just release-aarch64  # static aarch64 binary via `cross`; needs: cargo install cross, Docker running
@@ -40,84 +40,38 @@ so your own configuration and database are never touched.
 ## Layout
 
 ```text
-src/                  the program; see ARCHITECTURE.md for the module table
-tests/                integration tests: the real binary against fixtures, one file per area
-    common/           shared helpers; mod.rs is the index, env.rs runs the binary, json.rs reads output
-    workflow.rs       snapshots and diffs
-    live.rs           list and info
-    reports.rs        report kinds, export formats
-    sessions.rs       session rules, switching, export and import
-    database.rs       permissions, versioning, purge, backup, reset
-    config.rs         config file rules, `psm new` / `psm init` setup
-    help.rs           faq, completions
-tests/fixtures/
-    generate.py       writes the two trees below
-    proc/before/      fake /proc: the "before" state
-    proc/after/       fake /proc: the "after" state
-docs/                 USAGE, ARCHITECTURE, this file
+Cargo.toml            workspace: members, one version, shared dependency versions
+Cargo.lock            one lock for every crate (committed)
+justfile              recipes; cargo takes -p tool-psm where it matters
+crates/psm/           the psm tool              -> docs/psm/
+crates/psm-server/    stub: -> docs/psm-server/
+crates/psm-tui/       stub  -> docs/psm-tui/
+crates/psm-gui/       stub  -> docs/psm-gui/
+docs/                 this file and ARCHITECTURE.md for the workspace; one folder per tool
 ```
 
-The Cargo package is `tool-psm`; the binary is `psm`.
+Per tool: [psm/DEVELOPMENT.md](psm/DEVELOPMENT.md) (integration tests,
+fixtures, adding a command, troubleshooting).
 
-## Tests
+## Adding a tool
 
-Unit tests sit next to the code (`analysis/diff.rs`, `analysis/group.rs`,
-`analysis/view.rs`, `output/units.rs`, `output/table.rs`, `config.rs`). Integration tests in `tests/*.rs` run the built binary
-with `--proc-root` pointed at a fixture tree.
-
-### Fixtures
-
-What the two trees contain:
-
-| PID | before | after | Case |
-|---|---|---|---|
-| 2 | `kthreadd` | `kthreadd` | kernel thread: hidden by default, no memory |
-| 100 | `code`, 1000 MiB | `code`, 1400 MiB | running process that grows |
-| 200 | `old-helper`, 42 MiB | | gone |
-| 300 / 310 | `rust-analyzer`, 812 MiB | `rust-analyzer`, 344 MiB | restarted under a new PID |
-| 400 | `alpha`, 5 MiB | `beta`, 7 MiB | PID reused by another program |
-| 500 | `my (we)ird) name`, 20 MiB RSS | 10 MiB RSS + 10 MiB swap | awkward name; owned by root with no `exe`/`io`/`smaps_rollup`; swapped out, not freed |
-| 600 | | `node`, 72 MiB | new |
-
-Each tree also has `meminfo`, `uptime`, `loadavg`, `sys/kernel/*`, and
-a `cgroup-root/` directory that stands in for `/sys/fs/cgroup`.
-
-The trees are checked in, but they are generated: a `stat` line has 52
-fields. To change a case, edit `tests/fixtures/generate.py`, run
-`just fixtures`, and commit the script and the result together.
-
-Things a fixture cannot show: real permission errors (a missing file
-stands in for `EACCES`), two CPU readings apart in time (tests use
-`--interval 0`), and a reboot (covered by a unit test in `analysis/diff.rs`).
-
-## Adding a command
-
-1. Add the variant and its arguments to `Cmd` in `src/cli/commands.rs`
-   (shared argument groups live in `src/cli/args.rs`, value lists with
-   descriptions in `src/cli/values.rs`).
-2. Write the handler in the matching file under `src/commands/` (or a
-   new one, listed in `src/commands/mod.rs`) and add the arm to `run()`
-   there. Build an `output::Table` and print it with `ctx.emit`, so
-   text, `--json` and CSV come for free.
-3. Add a case to the matching file in `tests/` against the fixtures
-   (`tests/common/` has the helpers: `Env::ok`, `Env::json`, `Env::fails`).
-4. Describe it in `docs/USAGE.md` and the README command list.
-
-Adding a collected field: `model::Proc`, `collect/procfs.rs`, a new
-`store/migrations/NNNN_name.sql` (never edit an existing one) listed in
-`MIGRATIONS` in `store/mod.rs`, and the insert and load statements in
-`store/snapshots.rs`. `psm update` brings existing databases along.
-
-## Troubleshooting
-
-**`error[E0554]: #![feature] may not be used on the stable release channel`**
-in `anyhow` or `proc-macro2`. An editor running rust-analyzer on the
-same `target/` directory left build-script output that a normal build
-then reuses. Fix:
+The three stubs already exist (`cargo run -p tool-psm-tui` prints "not
+implemented" and exits 2); build inside them and drop `publish = false`
+when there is something to publish. For a fourth tool:
 
 ```bash
-cargo clean -p anyhow -p proc-macro2
+cargo new crates/psm-web --name tool-psm-web
 ```
 
-**rust-analyzer shows "proc macro not expanded"**. Editor-side version
-mismatch; the build is not affected.
+Then in its `Cargo.toml`: `version.workspace = true` and the other
+`[workspace.package]` fields, dependencies as `{ workspace = true }`
+(add new ones to `[workspace.dependencies]` in the root). It does not
+depend on `tool-psm`: it runs the installed `psm` and reads `--json`.
+`members = ["crates/*"]` picks it up; give it a folder under `docs/`, a
+row in [ARCHITECTURE.md](ARCHITECTURE.md) and recipes in the `justfile`
+with `-p`.
+
+## Releasing
+
+Bump `version` once, in the root `Cargo.toml`. Each crate is published
+on its own with `cargo publish -p <package>`.
