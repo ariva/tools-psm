@@ -249,7 +249,7 @@ fn commands_have_flag_forms() {
     // version is a command too, with the same flag forms as help.
     let version = e.ok("before", &["version"]);
     assert!(
-        version.starts_with("psm (process snapshot manager) ")
+        version.starts_with("psm (process state monitor) ")
             && version.contains("(built ")
             && version.contains(", commit "),
         "{version}"

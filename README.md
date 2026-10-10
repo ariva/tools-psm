@@ -1,16 +1,22 @@
 # tools-psm
 
-`psm` (process snapshot manager) takes named snapshots of the Linux
-process table and shows what changed between them: which processes are
-new, gone or restarted, and which ones moved memory the most. It is
-built for before/after testing (software updates, long-running
-workloads), not for continuous monitoring.
+`psm` (process state monitor) answers "what did this program do to
+the machine": it takes named snapshots of the Linux process table and
+shows what changed between them (new, gone, restarted, who moved
+memory), follows a program while it runs and reports min/max/avg of
+its memory, CPU and threads, and ranks programs over a whole session
+as growing, shrinking or flat. Live views (`procs`, `info`, `pid`,
+`--watch`) show the machine now; every command prints JSON for other
+tools. It runs for as long as a test runs, from your shell; it is not
+a daemon.
 
 ```bash
-psm new chrome-update      # new session + baseline snapshot
+psm new chrome-update       # new session + baseline snapshot
 # ... update, run the workload ...
 psm diff                    # baseline -> now
 psm snap after-update       # keep this state
+psm report trend            # growing, shrinking, noisy or flat, over the session
+psm track -- cargo build    # min/max/avg of memory, CPU, threads while it runs; --times 5 to bench
 ```
 
 ## Tools

@@ -1,7 +1,9 @@
 # Using psm
 
-`psm` (process snapshot manager) records the Linux process table at
-moments you choose and shows what changed between them.
+`psm` (process state monitor) records the Linux process table at
+moments you choose and shows what changed between them; `track`
+follows one program while it runs, `report trend` watches a whole
+session, and the live views show the machine now.
 
 ## Quick answers
 
@@ -1141,7 +1143,7 @@ stored in snapshots either way.
 ## Output formats
 
 On a terminal, every command that prints for a person opens with the
-version line (`psm (process snapshot manager) 3.0.0 (built ..., commit
+version line (`psm (process state monitor) 3.0.0 (built ..., commit
 ...)`). With `--json`, for `export`, `sessions export`, `completions`,
 or when standard output is a pipe or a file, it is left out, so data
 stays data.

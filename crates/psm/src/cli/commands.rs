@@ -409,10 +409,10 @@ Examples:
     Version,
 }
 
-/// `psm (process snapshot manager) 2.1.5 (built 2026-09-30, commit 563af30)`:
+/// `psm (process state monitor) 2.1.5 (built 2026-09-30, commit 563af30)`:
 /// what `psm version` prints and the first line of `psm -h`.
 pub const VERSION_LINE: &str = concat!(
-    "psm (process snapshot manager) ",
+    "psm (process state monitor) ",
     env!("CARGO_PKG_VERSION"),
     " (built ",
     env!("PSM_BUILD_DATE"),

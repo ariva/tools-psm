@@ -16,7 +16,7 @@ pub use commands::{Cmd, ExportFormat, InitCmd, ProcsCmd, ReportKind, SessionsCmd
 /// as `psm version`), the description, then author and repository.
 const HELP_TEMPLATE: &str = concat!(
     "{before-help}",
-    "psm (process snapshot manager) ",
+    "psm (process state monitor) ",
     env!("CARGO_PKG_VERSION"),
     " (built ",
     env!("PSM_BUILD_DATE"),
