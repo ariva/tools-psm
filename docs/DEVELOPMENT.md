@@ -6,6 +6,8 @@
 - [`just`](https://github.com/casey/just)
 - a C compiler (SQLite is built from source by `rusqlite`)
 - `python3`, only to regenerate the test fixtures
+- Docker, only for `just test-completions` (completion scripts checked
+  in real bash, zsh and fish) and for the aarch64 builds through `cross`
 
 ## Recipes
 
@@ -18,6 +20,7 @@ just run list --top 10        # run from source
 just smoke            # new -> snap -> diff on this machine, throwaway database
 just install          # cargo install --path crates/psm --force --locked -> ~/.cargo/bin/psm, then psm update
 just fixtures         # regenerate crates/psm/tests/fixtures/proc
+just test-completions # bash, zsh and fish completion in Docker (crates/psm/docker/completions); needs Docker running
 
 just release-static   # static x86_64 binary (musl); needs: rustup target add x86_64-unknown-linux-musl, apt install musl-tools
 just release-aarch64  # static aarch64 binary via `cross`; needs: cargo install cross, Docker running
@@ -44,6 +47,7 @@ Cargo.toml            workspace: members, one version, shared dependency version
 Cargo.lock            one lock for every crate (committed)
 justfile              recipes; cargo takes -p tool-psm where it matters
 crates/psm/           the psm tool              -> docs/psm/
+crates/psm/docker/    images for checks the host cannot run (completion scripts in real shells); README.md there
 crates/psm-server/    stub: -> docs/psm-server/
 crates/psm-tui/       stub  -> docs/psm-tui/
 crates/psm-gui/       stub  -> docs/psm-gui/

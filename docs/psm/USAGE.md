@@ -968,8 +968,14 @@ psm sessions <Tab>       list  purge  compare  export  import  delete
 psm procs --group <Tab>   name  exe  cmdline  app  user  cgroup  parent  pid
 ```
 
-Session names and snapshot labels are not completed: they live in the
-database, and the script is static. It lists the commands of the
+A fixed value of a positional (`report <kind>`, `completions
+<shell>`) and a subcommand next to words (`procs list`) are offered
+right after the command only; later words get the options (zsh and
+fish list options once a `-` is typed). In zsh, what follows `psm
+track --` completes as a command line of its own (command names, then
+that command's arguments); bash and fish offer psm's options or files
+there, a limit of their generated scripts. Session names and snapshot labels are not completed: they
+live in the database, and the script is static. It lists the commands of the
 version that wrote it, so regenerate it (`psm init`) after upgrading.
 
 A value that is not accepted is rejected with the list of valid ones:

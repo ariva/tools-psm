@@ -59,7 +59,7 @@ Nothing below `commands` knows about clap.
 | `cli/mod.rs` | `Cli`: the global options. |
 | `cli/args.rs` | Argument groups shared by several commands: filters, view, capture, diff. |
 | `cli/values.rs` | The fixed value lists with a description per value (group keys, sort columns, metrics, info tables). |
-| `cli/completions.rs` | clap_complete's script plus the commands' flag forms, which it leaves out. |
+| `cli/completions.rs` | clap_complete's scripts plus what they get wrong: the commands' flag forms (all three shells); a positional's fixed values and a mixed command's subcommands (`report <kind>`, `procs list`) only right after the command, where bash offers them at every word and fish not at all; for zsh one position-1 spec for `procs` so `list show` stop appearing after a word, and for `track` single-colon words (options stay completable between words) plus `_normal` for everything after `--`, read from the editor buffer because `_arguments -S` drops the `--`.; for `track` single-colon words (options stay completable between words) plus `_normal` for everything after `--`, read from the editor buffer because `_arguments -S` drops the `--`. Checked in real shells by `crates/psm/docker/completions/`. |
 | `build.rs` | Stamps the short commit hash (`-dirty` when the tree has changes) and the build date into the binary for `psm version`; "unknown" when git or date is missing. Asks git for the repository directory, since the crate is not at the repository root. |
 | `cli/commands.rs` | `Cmd`, `SessionCmd`, `ReportKind`, `ExportFormat`, help texts and examples. |
 | `commands/` | One handler file per command group. |
@@ -379,7 +379,9 @@ nothing.
 
 ## Testing
 
-Tests never read the real `/proc`. `--proc-root` points the collector
+Tests read the real `/proc` only where a fixture cannot stand in
+(`track`'s spawn and pid modes, `tests/track.rs`). Everywhere else
+`--proc-root` points the collector
 at `crates/psm/tests/fixtures/proc/before` and `after`, two small fake trees that
 contain the interesting cases: growth, new, gone, restart, PID reuse,
 a kernel thread, an unreadable process, a swapped-out process, a name
@@ -389,6 +391,10 @@ The integration tests (`tests/*.rs`, one file per area, helpers in
 `tests/common/`) run the real binary against them with a temporary
 database. Pure logic (diff classification, unit formatting, the CPU
 formula, config parsing) has unit tests next to the code.
+
+The completion scripts are checked in real shells: `just
+test-completions` runs `crates/psm/docker/completions/` (bash, zsh and
+fish in one Docker image) over a shared case list.
 
 See [DEVELOPMENT.md](DEVELOPMENT.md) for how to run and extend them.
 

@@ -79,6 +79,23 @@ fn completions_cover_commands_options_and_values() {
         bash.contains("psm,-s)\n                cmd=\"psm__subcmd__snap\""),
         "{bash}"
     );
+    // A positional's fixed values are offered right after the command only,
+    // not at every later word.
+    let report = bash.find("psm__subcmd__report)").unwrap();
+    let block = &bash[report..report + 600];
+    assert!(
+        block.contains("[[ ${prev} == report ]] && opts=\"${opts} memory processes new gone growth cpu timeline trend meminfo\""),
+        "{block}"
+    );
+    assert!(!block.contains("--watch memory processes"), "{block}");
+    assert!(
+        bash.contains("[[ ${prev} == completions ]] && opts=\"${opts} bash"),
+        "{bash}"
+    );
+    assert!(
+        bash.contains("[[ ${prev} == procs || ${prev} == -p ]] && opts=\"${opts} list show\""),
+        "{bash}"
+    );
     // Values that are not paths do not complete to the directory listing.
     let after = |flag: &str| {
         let i = bash
@@ -99,8 +116,46 @@ fn completions_cover_commands_options_and_values() {
     );
     let zsh = e.ok("before", &["completions", "zsh"]);
     assert!(zsh.contains("#compdef psm") && zsh.contains("'-s[Another snapshot"));
+    // procs: words or a subcommand at position 1, options plus words after a word.
+    assert!(
+        zsh.contains("'1::words or subcommand:_psm__subcmd__procs_commands' \\\n\"*::: :->procs\""),
+        "{zsh}"
+    );
+    assert!(
+        !zsh.contains("\":: :_psm__subcmd__procs_commands\""),
+        "{zsh}"
+    );
+    assert!(zsh.contains("psm-procs-command-$line[1]:"), "{zsh}");
+    assert!(
+        zsh.contains("            (*)\n_arguments \"${_arguments_options[@]}\" : \\\n'--group="),
+        "{zsh}"
+    );
+    assert!(
+        zsh.contains("'*::words:' \\\n&& ret=0\n            ;;\n        esac"),
+        "{zsh}"
+    );
+    // track: options between words, and the command after `--` completed as one.
+    let track = zsh
+        .find("(track)\nlocal -a lb; lb=(${(z)LBUFFER})")
+        .expect("track branch");
+    let block = &zsh[track..track + zsh[track..].find("\nfi\n").expect("end of branch")];
+    assert!(
+        block.contains("_normal && ret=0\nelse\n_arguments"),
+        "{block}"
+    );
+    assert!(block.contains("'*:words -- "), "{block}");
+    assert!(!block.contains("'*::words"), "{block}");
     let fish = e.ok("before", &["completions", "fish"]);
     assert!(fish.contains("complete -c psm") && fish.contains("-s p -d"));
+    // A positional's values, which clap_complete leaves out, right after the command only.
+    assert!(
+        fish.contains("-n \"__fish_psm_using_subcommand report; and test (commandline -pco)[-1] = report\" -f -a \"memory\\t'"),
+        "{fish}"
+    );
+    assert!(
+        fish.contains("and test (commandline -pco)[-1] = procs; and not __fish_seen_subcommand_from list show\" -a \"list\""),
+        "{fish}"
+    );
     assert!(
         e.fails("before", &["completions", "dos"])
             .contains("invalid value")

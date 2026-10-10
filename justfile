@@ -27,6 +27,11 @@ test:
 # everything CI runs
 check: lint test
 
+# completion scripts checked in real bash, zsh and fish (Docker): builds crates/psm/docker/completions/Dockerfile and runs its cases
+test-completions:
+    docker build -f crates/psm/docker/completions/Dockerfile -t psm-completions .
+    docker run --rm psm-completions
+
 # run the tool from source: just run list --group comm
 run *args:
     cargo run -q -p tool-psm -- {{args}}

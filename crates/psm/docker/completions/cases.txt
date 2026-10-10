@@ -1,0 +1,90 @@
+# shell | command line, cursor at its end (a space before the bar = complete the next word) | expectations
+# shell: all, or a comma list of bash, zsh, fish. Expectations: +word must
+# be offered, -word must not be. zsh and fish offer options only once a
+# dash is typed, so option expectations are bash-only or use `--`. Values
+# after `=` (`--deep=`, `--json=`) are zsh/fish only: bash splits the word
+# at `=` and clap's bash script cannot complete them (not simulated here).
+# Blank lines and # are skipped.
+all  | psm                      | +procs +report +track +sessions +snapshots +faq
+all  | psm re| +report -procs
+all  | psm report               | +memory +growth +trend +timeline +meminfo
+all  | psm report trend         | -trend -growth -memory
+bash | psm report trend         | +--top +--group
+all  | psm report trend --| +--top +--group +--metric
+all  | psm report trend growth  | -trend -growth
+all  | psm procs                | +list +show
+all  | psm procs chrome         | -list -show
+all  | psm procs chrome --| +--group +--sort
+all  | psm procs --group        | +app +cgroup +name +exe +pid
+all  | psm procs --sort         | +cpu +mem +threads +count
+all  | psm diff --metric        | +total +anon +pss
+all  | psm info --by            | +cpu +mem +threads +swap +io
+all  | psm sessions             | +activate +compare +export +import +purge +reset
+all  | psm sessions export --format | +json +csv
+all  | psm snapshots            | +delete +rename +reset +list
+all  | psm completions          | +bash +zsh +fish
+all  | psm completions bash     | -bash -zsh
+all  | psm track --group        | +app +name +pid
+zsh,fish | psm --json=| +full +safe +none
+bash | psm -p                   | +list +show
+bash | psm -p chrome            | -list -show
+
+# every command group and its subcommands
+all  | psm sessions ac| +activate -deactivate
+all  | psm sessions de| +deactivate +delete
+all  | psm sessions activate   | -activate -list
+all  | psm sessions compare a b --| +--group +--metric +--top +--name
+all  | psm sessions compare --group | +app +name +cgroup
+all  | psm sessions export --| +--format +--all +--no-cmdline
+all  | psm sessions purge --| +--older-than
+all  | psm sessions rename x y --| +--help
+all  | psm snapshots de| +delete
+all  | psm snapshots rename 2 x --| +--help
+all  | psm snapshots reset --| +--yes +--deep +--no-cmdline
+all  | psm init                | +force
+all  | psm init force --| +--yes
+all  | psm init --| +--shell
+all  | psm procs show           | -list -show
+all  | psm procs show --| +--group +--sort +--top +--deep
+all  | psm procs list --| +--group +--sort +--interval +--watch
+all  | psm procs list --group | +app +cgroup +name
+
+# the daily commands and their options
+all  | psm diff --| +--memory +--new +--gone +--restarted +--brief +--group +--metric +--top +--min-delta +--watch
+all  | psm diff --group | +app +name +cgroup +parent +pid
+all  | psm diff 0 1 --| +--memory +--brief
+all  | psm report growth --| +--group +--metric +--top
+all  | psm report growth --metric | +total +anon +pss
+all  | psm pid 1 --| +--watch +--json
+all  | psm info --| +--by +--group +--top +--interval +--deep +--watch
+all  | psm info --group | +app +name
+all  | psm new --| +--deep +--no-cmdline
+zsh,fish | psm new --deep=| +true +false
+all  | psm snap --| +--deep +--no-cmdline
+all  | psm export --| +--all +--format +--no-cmdline
+all  | psm export --format | +json +csv
+all  | psm track --| +--every +--warmup +--for +--times +--skip-runs +--keep-going +--pause +--save +--group +--quiet +--name +--pid
+all  | psm track chrome --| +--every +--for +--group
+all  | psm track a b --| +--every
+zsh  | psm track -- fi| +fish +find
+zsh  | psm track -- fish --| -every -for
+all  | psm faq --| +--help
+all  | psm completions zsh --| +--help
+all  | psm update --| +--shell
+
+# global options, anywhere
+all  | psm --| +--config +--db +--proc-root +--kernel +--json
+zsh,fish | psm --kernel=| +true +false
+zsh,fish | psm procs --kernel=| +true +false
+all  | psm --json=safe procs | +list +show
+zsh,fish | psm procs --json=| +full +safe +none
+
+# flag forms (bash follows them into the command's own options)
+bash | psm -s --| +--deep +--no-cmdline
+bash | psm -d --| +--memory +--brief
+bash | psm -t --| +--every +--times
+bash | psm -i --by | +cpu +mem
+
+# words that are not commands
+all  | psm nosuch| -procs -report
+all  | psm procs nosuch| -list -show

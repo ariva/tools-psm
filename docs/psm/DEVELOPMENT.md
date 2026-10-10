@@ -5,6 +5,9 @@
 - [`just`](https://github.com/casey/just)
 - a C compiler (SQLite is built from source by `rusqlite`)
 - `python3`, only to regenerate the test fixtures
+- Docker, only for `just test-completions` (the completion scripts in
+  real bash, zsh and fish; see [Shell completion](#shell-completion))
+  and the aarch64 builds through `cross`
 
 ## Layout
 
@@ -27,6 +30,9 @@ crates/psm/
         database.rs       permissions, versioning, purge, backup, reset
         config.rs         config file rules, `psm new` / `psm init` setup
         help.rs           faq, completions
+        track.rs          `track` against the real /proc (spawn, pid) and the fixture (words)
+    docker/               images for checks the host cannot run; README.md there
+        completions/      bash, zsh and fish completion check: `just test-completions`
     tests/fixtures/
         generate.py       writes the two trees below
         proc/before/      fake /proc: the "before" state
@@ -37,7 +43,29 @@ crates/psm/
 
 Unit tests sit next to the code (`analysis/diff.rs`, `analysis/group.rs`,
 `analysis/view.rs`, `output/units.rs`, `output/table.rs`, `config.rs`). Integration tests in `tests/*.rs` run the built binary
-with `--proc-root` pointed at a fixture tree.
+with `--proc-root` pointed at a fixture tree. `tests/track.rs` is the
+exception: `track`'s spawn and pid modes need the child to be visible,
+so those tests run against the real `/proc` with short `sh -c` children.
+
+### Shell completion
+
+The completion scripts are static text, so only a real shell can say
+whether `psm report trend <TAB>` offers the right words. `just
+test-completions` builds `crates/psm/docker/completions/Dockerfile` (a
+`rust` stage compiles psm, the runtime image is Debian with bash, zsh
+and fish, the three scripts installed the way USAGE.md says) and runs
+`run.sh`, which feeds every line of `cases.txt` to each shell's
+completion and checks the `+word`/`-word` expectations. bash calls the
+script's `_psm` function the way readline would, fish uses `complete
+-C`, zsh is driven through a pseudo-terminal (`zsh-complete.zsh`,
+`zpty`) because completion only runs inside the line editor. Needs
+Docker; it is not part of `just check`. Adds a case for every
+completion fix. Two things the harness does not model: real bash splits
+a word at `=`, so `--json=` value cases are zsh/fish only; and zsh and
+fish list options only once a `-` is typed, so option cases end the
+line with `--` or are bash-only. `tests/help.rs` keeps textual anchors on the patched
+parts of the scripts, so `cargo test` still catches a clap_complete
+upgrade that moves them.
 
 ### Fixtures
 
