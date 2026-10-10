@@ -1,5 +1,6 @@
 //! The commands, with their help texts and examples.
 
+use std::ffi::OsString;
 use std::path::PathBuf;
 
 use clap::{Subcommand, ValueEnum};
@@ -185,6 +186,79 @@ Examples:
         kind: ReportKind,
         #[command(flatten)]
         diff: DiffArgs,
+    },
+    /// Follow a program while it runs: min, max and average of its memory, CPU and threads
+    ///
+    /// Samples the program every --every until it ends, then prints one
+    /// table. The program is started here (`-- cmd args`, its exit code
+    /// is passed through), an existing pid and its descendants (--pid),
+    /// or whatever the words and filters match, re-matched on every
+    /// sample and rolled up by --group so helpers count (`track chrome`).
+    /// --warmup drops the cold start from the statistics; --times runs a
+    /// command again and again and compares the runs; --save writes the
+    /// JSON document after every sample so another tool can follow it.
+    #[command(
+        short_flag = 't',
+        after_help = "\
+Examples:
+  psm track -- cargo build --release       start it, sample until it exits
+  psm track --warmup 5s -- ./server        the first 5s do not count
+  psm track --pid 1234                     an existing process and its children
+  psm track chrome --for 10m               by words, like `psm procs chrome`, for ten minutes
+  psm track --times 5 --skip-runs 1 -- ./bench   five runs, the cold one shown but not counted
+  psm track --save build.json -- make      table on screen, every sample in the file
+
+Rows (each summed over every process of the target at a sample):
+  rss       memory in RAM right now, shared libraries counted once per process
+  anon      heap and stack: what the program allocated itself; the row to watch for a leak
+  swap      memory of the target moved out of RAM
+  cpu %     CPU over the period between two samples, per core: 100 = one core busy
+  threads   threads of all its processes
+  procs     how many processes it had (a browser: the main process plus every renderer and helper)
+Columns: MIN, MAX, AVG, LAST over the samples after --warmup; AT MAX is seconds
+from the start when MAX was seen (empty when the row never changed). HOST is the
+machine, not the target: lowest MemAvailable seen, whole-machine CPU, load."
+    )]
+    Track {
+        /// Words to look for in the pid, name, executable path or command line;
+        /// every word must match, case does not matter (--match-case: it does)
+        #[arg(value_name = "WORD")]
+        words: Vec<String>,
+        /// Sample period [default: 1s, config track.every]
+        #[arg(long, value_name = "DURATION")]
+        every: Option<String>,
+        /// Drop the first DURATION of every run from min/max/avg [default: 0, config track.warmup]
+        #[arg(long, value_name = "DURATION")]
+        warmup: Option<String>,
+        /// Stop after DURATION (a started command gets SIGINT)
+        #[arg(long = "for", value_name = "DURATION")]
+        for_: Option<String>,
+        /// Run the command N times; the runs are compared at the end
+        #[arg(long, value_name = "N", default_value_t = 1)]
+        times: u32,
+        /// Leave the first N runs out of the comparison (still shown)
+        #[arg(long, value_name = "N", default_value_t = 0)]
+        skip_runs: u32,
+        /// Keep running after a run exits with an error
+        #[arg(long)]
+        keep_going: bool,
+        /// Wait between runs [default: 0, config track.pause]
+        #[arg(long, value_name = "DURATION")]
+        pause: Option<String>,
+        /// Write the JSON document to FILE after every sample and at the end
+        #[arg(long, value_name = "FILE")]
+        save: Option<PathBuf>,
+        /// Roll matched processes up to this key so their helpers count (words mode) [default: app]
+        #[arg(long, value_name = "KEY", value_parser = group_keys())]
+        group: Option<String>,
+        /// No progress line on stderr (a started command has none anyway: it owns the terminal)
+        #[arg(long)]
+        quiet: bool,
+        #[command(flatten)]
+        filter: FilterArgs,
+        /// The command to start, after `--`
+        #[arg(last = true, value_name = "COMMAND")]
+        command: Vec<OsString>,
     },
     /// Sessions: list (the default), activate, deactivate, compare, export, import, delete, purge, reset
     #[command(after_help = "\

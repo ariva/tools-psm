@@ -83,6 +83,9 @@ not a rate.
 | 5.5 | How do I include kernel threads? | add `--kernel` | [reading the numbers](USAGE.md#reading-the-numbers) |
 | 5.6 | How do I leave noise out? | `--exclude-regex '^chrome_crashpad'` | [narrowing further](USAGE.md#narrowing-further) |
 | 5.7 | How do I send a diff to a server? | `psm diff --json \| curl -d @- $URL` | [sending output](USAGE.md#sending-output-to-a-server) |
+| 5.8 | How much memory did my build use? | `psm track -- cargo build` (min/max/avg while it runs; `--times 5` to compare runs) | [tracking a program](USAGE.md#tracking-a-program), [guide](TRACK.md) |
+| 5.9 | Is this process leaking while it runs? | `psm track --pid <pid> --warmup 30s` (LAST = MAX on the anon row, run after run) | [guide](TRACK.md#3-does-the-server-leak-under-load) |
+| 5.10 | rss or anon: which one do I look at? | `psm diff --metric anon` (anon: its own allocations; rss: all it occupies in RAM) | [memory metrics](USAGE.md#memory-metrics) |
 
 4. Options and data
 

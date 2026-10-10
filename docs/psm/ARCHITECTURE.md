@@ -71,8 +71,9 @@ Nothing below `commands` knows about clap.
 | `commands/maintenance.rs` | `purge`, `backup`, `reset`. |
 | `commands/setup.rs` | `init`, `config`, where completion scripts go. |
 | `commands/faq.rs` | The FAQ table and its filter. |
+| `commands/track.rs` | `track`: start a command or pick a pid / words target, the sampling loop (period, warmup, `--for`, `--times`, `--pause`, signals), the progress line, the text tables, the document `--save` rewrites after every sample. |
 | `collect/procfs.rs` | Builds a `Snapshot` from a proc root through the `procfs` crate. The only file that sees `procfs` types. |
-| `collect/raw.rs` | Direct readers for what the crate does not cover: meminfo as raw key/value, uptime, loadavg, cgroup memory files, `/etc/passwd`. |
+| `collect/raw.rs` | Direct readers for what the crate does not cover: meminfo as raw key/value, uptime, loadavg, the whole-machine CPU ticks of `/proc/stat`, cgroup memory files, `/etc/passwd`. |
 | `store/mod.rs` | `Db`: opening the file, schema creation and version check, backup. |
 | `store/sessions.rs` | Active session, switching, deactivating, importing, purging, deleting. |
 | `store/snapshots.rs` | Storing, listing, loading, deleting, appending snapshots; resolving `baseline`/`latest`/`prev`/number/label. |
@@ -81,7 +82,8 @@ Nothing below `commands` knows about clap.
 | `analysis/diff.rs` | Classifies processes between two snapshots and builds the comparison tables. |
 | `analysis/view.rs` | The table of one snapshot: filter, group, sort, cut; `%CPU` formulas. |
 | `analysis/reports.rs` | System header, `status`, and the meminfo, cpu, timeline and trend reports. |
-| `output/mod.rs` | `out` (pipe-safe printing); `print_json` and the envelope every JSON document gets (`psm`, `command`, `options`, `started`, `elapsed_ms`, `data`); `build_info`; the UTC timestamp without a time crate. |
+| `analysis/track.rs` | `Target` (a pid tree, or a filter rolled up by group), one `Sample` of it and the machine, `Stats` over a run with the warmup cut, `Final` over several runs. |
+| `output/mod.rs` | `out` (pipe-safe printing); `print_json`, `json_document` and the envelope every JSON document gets (`psm`, `command`, `options`, `started`, `elapsed_ms`, `data`); `build_info`; the UTC timestamp without a time crate. |
 | `output/table.rs` | `Table` and `Cell`: one definition rendered as text, JSON or CSV. |
 | `output/units.rs` | Binary units, size and duration parsing. |
 | `output/export.rs` | Session dump as JSON or CSV, and reading the JSON dump back. |
@@ -287,6 +289,43 @@ counters, sleeps for the interval, collects, and computes
 `(pid, start_time)`. A stored snapshot has one reading, so `show` uses
 the lifetime average.
 
+## Tracking a program
+
+`track` (`commands/track.rs`, `analysis/track.rs`) is the one command
+that watches time pass instead of comparing two moments. Every sample
+is a full collector pass (`Ctx::collect`), the same `Snapshot` the
+other commands use; the target's processes are picked out of it:
+
+- a started command or `--pid`: the roots and every process whose
+  `ppid` chain reaches one of them (`track::tree`), re-walked on every
+  sample so children that come and go are counted while they live;
+- words: `Filter::keep` as in `procs`, then every process whose group
+  key (default `app`) is among the matched ones, so a browser's
+  renderers count though the word never names them.
+
+Zombies (`state == "Z"`) are never members: they hold nothing, and a
+target whose last process is a zombie counts as gone.
+
+`%CPU` reuses `view::cpu_percent` with the previous sample as the
+first reading: ticks of the current members minus their ticks last
+time (a member born since counts from zero), over the real period. No
+extra sleep inside a sample. The whole-machine figure is the busy
+share of `/proc/stat`'s first line over the same period
+(`raw::cpu_total`).
+
+The loop is `track`'s own, not the `--watch` one: it prints nothing
+until the end (a progress line on stderr when that is a terminal),
+sleeps in 50 ms slices so a child exit, the `--for` deadline or a
+signal is seen promptly, and treats a `--for` stop as the plan (SIGINT
+to the child, 5 s grace, SIGKILL; exit 0). Ctrl-C sets a flag; the
+terminal has already delivered it to a started child, so only a
+SIGTERM to psm is forwarded. Statistics (`Stats`) are recomputed
+after every sample over the samples past the warmup; `Final` takes
+each counted run's peaks. `--save` writes the complete document after
+every sample to `FILE.tmp` and renames it over `FILE`, so a reader
+never sees a half file; the printed `--json` is the same document, so
+a consumer parses one shape whether it polled or waited.
+
 ## Output
 
 Every table is a `format::Table` of typed cells (`Text`, `Int`,
@@ -362,8 +401,9 @@ Marked in the code with a `ponytail:` comment.
 | `collect::raw::usernames` | reads `/etc/passwd` only | LDAP/NSS users need names: use `getpwuid_r` |
 | `analysis::group::LAUNCHERS` | a fixed list of launcher names decides where `--group app` stops | a desktop shell or terminal is missing: make it a config key |
 | `Diff::group_impact` | a cgroup without `memory.current` keeps summed RSS in the same ranking as cgroups that have it | mixed rows mislead: split the table |
+| `commands::track::save` | the whole document is rewritten after every sample, O(n²) bytes over a run | days at `--every 100ms`: add a JSON Lines sibling |
 
 ## Not built
 
-`watch` (interval snapshots), notes and tags, thresholds with exit
-code `1`, HTML reports.
+Interval snapshots stored in a session (`track` samples but stores
+nothing), notes and tags, thresholds with exit code `1`, HTML reports.

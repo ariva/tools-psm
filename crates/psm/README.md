@@ -51,6 +51,7 @@ Linux only. The Cargo package is `tool-psm`; the binary is `psm`.
 | `psm` / `psm status` | Active session summary |
 | `psm diff [a] [b]` | Changes between two snapshots; default baseline -> now; `--brief` for one line |
 | `psm report <kind>` | `memory`, `growth`, `processes`, `new`, `gone`, `cpu`, `meminfo`, `timeline`, `trend` |
+| `psm track -- <cmd>` / `--pid <pid>` / `[words]` | Follow a program while it runs: min/max/avg of memory, CPU, threads; `--times N` compares runs, `--save` keeps every sample as JSON ([guide](../../docs/psm/TRACK.md)) |
 | `psm procs show [ref]` | Processes of one stored snapshot (`list` is the live ones); same options |
 | `psm list` (= `psm snapshots`) / `psm sessions` | What is stored |
 | `psm sessions compare <a> <b>` | Two sessions, by program |
@@ -78,6 +79,8 @@ Some commands have a letter: `psm -s` is `psm snap` (`psm -h` shows them). Doubl
 - [docs/psm/USAGE.md](../../docs/psm/USAGE.md): every command, snapshot references,
   worked examples, how to read the numbers, configuration,
   privileges, limitations.
+- [docs/psm/TRACK.md](../../docs/psm/TRACK.md): `psm track` by example, with real
+  outputs and the JSON document another tool can follow.
 - [docs/psm/ARCHITECTURE.md](../../docs/psm/ARCHITECTURE.md): modules, data flow,
   storage, the diff algorithm, design decisions.
 - [docs/psm/DEVELOPMENT.md](../../docs/psm/DEVELOPMENT.md): recipes, tests, fixtures,

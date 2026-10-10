@@ -90,10 +90,15 @@ pub fn json_round() {
 /// Every JSON document: who wrote it, the command and its options, when,
 /// how long, then the command's own output under `data`.
 pub fn print_json(data: &Value) {
+    out(serde_json::to_string_pretty(&json_document(data)).unwrap_or_default());
+}
+
+/// The document `print_json` prints, for a command that also writes it to
+/// a file. Without a parsed command line (unit tests) it is the bare value.
+pub fn json_document(data: &Value) -> Value {
     let guard = ENVELOPE.lock().unwrap();
     let Some(e) = guard.as_ref() else {
-        // Nothing parsed (unit tests): the bare value.
-        return out(serde_json::to_string_pretty(data).unwrap_or_default());
+        return data.clone();
     };
     let mut doc = Map::new();
     doc.insert("psm".into(), build_info());
@@ -119,8 +124,7 @@ pub fn print_json(data: &Value) {
         json!(e.begun.elapsed().as_millis() as u64),
     );
     doc.insert("data".into(), data.clone());
-    drop(guard);
-    out(serde_json::to_string_pretty(&Value::Object(doc)).unwrap_or_default());
+    Value::Object(doc)
 }
 
 /// The writing psm: version, build date, commit, schema. Also the `data`
@@ -132,6 +136,11 @@ pub fn build_info() -> Value {
         "commit": env!("PSM_GIT_HASH"),
         "schema": crate::store::SCHEMA_VERSION,
     })
+}
+
+/// The current time as the database writes it: `2026-10-07T21:55:03Z`.
+pub fn now_utc() -> String {
+    utc(SystemTime::now())
 }
 
 /// `2026-10-07T21:55:03Z`, the format the database uses. No time crate:

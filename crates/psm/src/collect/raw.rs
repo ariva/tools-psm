@@ -52,6 +52,27 @@ pub fn loadavg(root: &Path) -> (f64, f64, f64) {
     )
 }
 
+/// `(busy, total)` ticks of the whole machine from the first line of
+/// `/proc/stat`; `None` without the file (fixture trees). Busy is
+/// everything but idle and iowait.
+pub fn cpu_total(root: &Path) -> Option<(i64, i64)> {
+    parse_cpu_line(&read_trim(&root.join("stat"))?)
+}
+
+fn parse_cpu_line(text: &str) -> Option<(i64, i64)> {
+    let line = text.lines().find(|l| l.starts_with("cpu "))?;
+    let v: Vec<i64> = line
+        .split_whitespace()
+        .skip(1)
+        .filter_map(|x| x.parse().ok())
+        .collect();
+    if v.len() < 5 {
+        return None;
+    }
+    let total: i64 = v.iter().sum();
+    Some((total - v[3] - v[4], total))
+}
+
 /// cgroup v2 mount. Fixture trees keep theirs next to the process directories.
 pub fn cgroup_root(proc_root: &Path) -> PathBuf {
     if proc_root == Path::new("/proc") {
@@ -81,4 +102,18 @@ pub fn usernames() -> HashMap<i64, String> {
             Some((uid, name.to_string()))
         })
         .collect()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn cpu_line_is_busy_and_total() {
+        // user nice system idle iowait irq softirq steal guest guest_nice
+        let text = "cpu  100 5 50 800 20 3 2 0 0 0\ncpu0 1 2 3 4 5 6 7 8 9 0\n";
+        assert_eq!(parse_cpu_line(text), Some((160, 980)));
+        assert_eq!(parse_cpu_line("intr 1 2 3"), None);
+        assert_eq!(parse_cpu_line("cpu 1 2"), None);
+    }
 }

@@ -11,6 +11,7 @@ pub struct Config {
     pub collection: Collection,
     pub display: Display,
     pub diff: Diff,
+    pub track: Track,
 }
 
 #[derive(Debug, PartialEq, Deserialize)]
@@ -74,6 +75,24 @@ impl Default for Diff {
     }
 }
 
+#[derive(Debug, PartialEq, Deserialize)]
+#[serde(default, deny_unknown_fields)]
+pub struct Track {
+    pub every: String,
+    pub warmup: String,
+    pub pause: String,
+}
+
+impl Default for Track {
+    fn default() -> Self {
+        Track {
+            every: "1s".into(),
+            warmup: "0s".into(),
+            pause: "0s".into(),
+        }
+    }
+}
+
 fn home() -> Option<PathBuf> {
     std::env::var_os("HOME")
         .filter(|h| !h.is_empty())
@@ -126,6 +145,11 @@ json_options = "full"  # what --json records about the run: full, safe (no descr
 [diff]
 metric = "total"         # total, anon, pss
 min_memory_delta = "1M"  # hide smaller memory changes
+
+[track]
+every = "1s"       # sample period of `psm track`
+warmup = "0s"      # dropped from min/max/avg at the start of every run
+pause = "0s"       # wait between runs (--times)
 "#;
 
 pub fn default_path() -> Option<PathBuf> {
@@ -201,5 +225,6 @@ mod tests {
         assert!(c.collection.deep && c.collection.cmdline);
         assert_eq!(c.display.interval, "500ms");
         assert_eq!(c.diff.metric, "total");
+        assert_eq!(c.track.every, "1s");
     }
 }

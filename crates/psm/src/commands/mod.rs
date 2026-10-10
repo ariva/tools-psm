@@ -7,6 +7,7 @@ mod faq;
 mod maintenance;
 mod sessions;
 mod setup;
+mod track;
 mod views;
 
 use std::collections::HashMap;
@@ -211,7 +212,7 @@ const COMMAND_GROUPS: &[(&str, &[&str])] = &[
     (
         "Commands:",
         &[
-            "procs", "pid", "info", "new", "snap", "list", "diff", "report", "status",
+            "procs", "pid", "info", "new", "snap", "list", "diff", "report", "track", "status",
         ],
     ),
     (
@@ -523,6 +524,38 @@ fn dispatch(ctx: &Ctx, cmd: Cmd) -> Result<()> {
         Cmd::Status => sessions::status(ctx),
         Cmd::List => sessions::snapshots(ctx),
         Cmd::Report { kind, diff: args } => compare::report(ctx, kind, &args),
+        Cmd::Track {
+            words,
+            every,
+            warmup,
+            for_,
+            times,
+            skip_runs,
+            keep_going,
+            pause,
+            save,
+            group,
+            quiet,
+            filter,
+            command,
+        } => track::track(
+            ctx,
+            track::Args {
+                words,
+                every,
+                warmup,
+                for_,
+                times,
+                skip_runs,
+                keep_going,
+                pause,
+                save,
+                group,
+                quiet,
+                filter,
+                command,
+            },
+        ),
         Cmd::Sessions { cmd: None }
         | Cmd::Sessions {
             cmd: Some(SessionsCmd::List),

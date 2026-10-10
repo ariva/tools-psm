@@ -17,7 +17,7 @@ psm snap after-update       # keep this state
 
 | Tool | Status | What it is | Docs |
 |---|---|---|---|
-| [psm](crates/psm/README.md) | ready | the command-line tool; package `tool-psm`, binary `psm` | [usage](docs/psm/USAGE.md), [FAQ](docs/psm/FAQ.md), [architecture](docs/psm/ARCHITECTURE.md), [development](docs/psm/DEVELOPMENT.md) |
+| [psm](crates/psm/README.md) | ready | the command-line tool; package `tool-psm`, binary `psm` | [usage](docs/psm/USAGE.md), [FAQ](docs/psm/FAQ.md), [track guide](docs/psm/TRACK.md), [architecture](docs/psm/ARCHITECTURE.md), [development](docs/psm/DEVELOPMENT.md) |
 
 
 The `psm` tool talks to other external tools through its `--json` output and shares no code with it.
@@ -35,6 +35,7 @@ The `psm` tool talks to other external tools through its `--json` output and sha
 | `psm` / `psm status` | Active session summary |
 | `psm diff [a] [b]` | Changes between two snapshots; default baseline -> now; `--brief` for one line |
 | `psm report <kind>` | `memory`, `growth`, `processes`, `new`, `gone`, `cpu`, `meminfo`, `timeline`, `trend` |
+| `psm track -- <cmd>` / `--pid <pid>` / `[words]` | Follow a program while it runs: min/max/avg of memory, CPU, threads; `--times N` compares runs, `--save` keeps every sample as JSON ([guide](docs/psm/TRACK.md)) |
 | `psm procs show [ref]` | Processes of one stored snapshot (`list` is the live ones); same options |
 | `psm list` (= `psm snapshots`) / `psm sessions` | What is stored |
 | `psm sessions compare <a> <b>` | Two sessions, by program |

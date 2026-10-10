@@ -34,6 +34,7 @@ the same list at the command line.
 - [Capturing: `new`, `snap`](#capturing)
 - [Comparing: `diff`](#comparing)
 - [Reports](#reports)
+- [Tracking a program: `track`](#tracking-a-program)
 - [Use cases: following one program with `--name`](#use-cases-following-one-program-with---name)
 - [Sessions and housekeeping](#sessions-and-housekeeping)
 - [Options shared by many commands](#shared-options)
@@ -445,6 +446,102 @@ ID  LABEL          TIME                 PROCS      USED    SWAP  MATCHED RSS+SWA
 `report cpu` counts processes still present in the second snapshot; a
 process that exited took its final counters with it.
 
+## Tracking a program
+
+`psm track` follows a program while it runs and prints, when it ends,
+the minimum, maximum, average and last value of its memory, CPU,
+threads and process count. Nothing is stored in the database.
+[TRACK.md](TRACK.md) walks through worked examples; this is the reference.
+
+| Command | Effect |
+|---|---|
+| `psm track -- <cmd> [args]` | start the command, sample it and every process it starts until it exits; psm exits with the command's exit code |
+| `psm track --pid <pid>` | an existing process and its descendants, until it is gone |
+| `psm track [words] [filters]` | the processes `psm procs [words]` would list, re-matched on every sample and rolled up by `--group` (default `app`) so their helpers count; until `--for` elapses, Ctrl-C, or nothing matches any more |
+
+Options:
+
+| Option | Effect |
+|---|---|
+| `--every <duration>` | sample period; default `1s` (`track.every` in the config) |
+| `--warmup <duration>` | the first part of every run is left out of min/max/avg (still in the saved series); default `0` (`track.warmup`) |
+| `--for <duration>` | stop after that long; a started command gets SIGINT, waits up to 5 s, then SIGKILL; not a failure |
+| `--times <N>` | run a started command N times and compare the runs; a run that exits non-zero ends the series unless `--keep-going` |
+| `--skip-runs <N>` | the first N runs are shown but left out of `FINAL` (cold cache) |
+| `--pause <duration>` | wait between runs; not sampled, not counted; default `0` (`track.pause`) |
+| `--save <file>` | write the JSON document to the file after every sample and at the end; the table still prints |
+| `--group <key>` | the roll-up of words mode; `pid` = none |
+| `--quiet` | no progress line on stderr; pid and words mode show one on a terminal, a started command never does (it owns the terminal, its output is the progress) |
+| `--name`, `--exe`, `--cmdline`, `--user`, `--match-case`, `--exclude-regex` | the [filters](#filters-and-global-options), for words mode |
+
+```bash
+psm track -- cargo build --release
+psm track --warmup 5s --every 200ms -- ./server --port 8080
+psm track --pid 1234 --for 10m
+psm track chrome --for 10m --save chrome.json
+psm track --times 5 --skip-runs 1 --pause 2s -- ./bench
+```
+
+On a terminal a started command's output is framed: a `tracking ...`
+line and a rule before it, a rule and the version line after it. Then
+the output is a header
+(`TRACK`, the target, how it ended, wall time, samples), a `HOST` line (cores, RAM, lowest `MemAvailable` seen,
+whole-machine CPU, load) and one row per metric:
+
+```text
+TRACK  cargo build -q -p tool-psm --release   exit 0   wall 5.2s   samples 11
+HOST   box, 20 cpus, 125.51 GiB, free min 106.14 GiB (of 106.60 GiB at start), system cpu avg 39% max 89%, load 2.1
+METRIC       MIN      MAX      AVG     LAST  AT MAX
+rss      134 MiB  627 MiB  421 MiB  447 MiB  3.5s
+anon      42 MiB  514 MiB  286 MiB  333 MiB  3.5s
+swap         0 B      0 B      0 B      0 B
+cpu %       98.0   1718.0    586.9    100.0  3.5s
+threads       29       47       35       32  3.5s
+procs          3        3        3        3
+rows: sums over the target's processes per sample; cpu % per core (100 = one core); procs = how many processes; AT MAX = seconds from the start. `psm help track` explains each.
+```
+
+Every row is a sum over the target's processes at that sample: `rss`,
+`anon`, `swap` as in [Memory metrics](#memory-metrics); `threads` all
+their threads; `procs` how many processes the target had (a browser's
+main process plus every renderer and helper). `cpu %` is per core, over
+the period between two samples (the first sample has none). `AT MAX`
+is when the maximum was seen; a row that never changed leaves it
+empty. A legend line under the table says the same; `psm help track`
+lists the rows. With `--times` the table is one row per
+run (exit, wall, each metric's peak, average CPU) followed by `FINAL`:
+min, max, average and spread (max − min) of those peaks over the runs
+that count.
+
+### The track document
+
+`--json` prints, and `--save` writes, one document; the file is
+rewritten after every sample (written to `FILE.tmp`, renamed over
+`FILE`) so another tool can follow the run. Under the usual
+[envelope](#the-json-document), `data` holds:
+
+| Key | Content |
+|---|---|
+| `status` | `running`, `done`, `interrupted` (Ctrl-C), `failed` (a run exited non-zero) |
+| `target` | `{mode: spawn, command: [...]}`, `{mode: pid, pids: [...]}` or `{mode: words, words: [...], group}` |
+| `host` | `hostname`, `cpus`, `memory_total`, `swap_total`, `clk_tck`, `kernel` |
+| `settings` | `every_ms`, `warmup_ms`, `pause_ms`, `for_ms`, `times`, `skip_runs`, as resolved |
+| `run` | the run in progress; absent when done |
+| `runs[]` | per run: `run`, `status`, `ended` (`exit`, `gone`, `for`, `ctrl-c`), `exit`, `skipped`, `started`, `wall_ms`, `samples`, `dropped` (warmup), `stats`, `series[]` |
+| `runs[].stats` | per row (`rss`, `anon`, `swap`, `cpu`, `threads`, `procs`): `min`, `max`, `avg`, `last`, `at_max_ms`; `system` has the same for `mem_available`, `mem_used`, `cpu` |
+| `runs[].series[]` | every sample: `t_ms`, `target {rss, anon, swap, cpu, threads, procs}`, `system {mem_available, mem_used, swap_used, cpu, load_1}` |
+| `final` | over the runs not skipped: `runs` (their numbers), `exit`, and `{min, max, avg, spread}` of `wall_ms`, `rss_max`, `anon_max`, `swap_max`, `cpu_avg`, `threads_max`, `procs_max`, `system.mem_available_min`, `system.cpu_max`; `null` while running |
+
+Sizes are bytes, CPU per cent per core, times milliseconds from the
+start of the run. `final` is present with `--times 1` too.
+
+```bash
+watch -n1 'jq -r ".data.runs[-1].series[-1] | [.t_ms, .target.rss] | @tsv" build.json'
+```
+
+What sampling misses: a process that starts and exits between two
+samples, and a peak between two samples; `--every 100ms` narrows both.
+
 ## Use cases: following one program with `--name`
 
 `--name <text>` keeps the processes whose name **contains** the text,
@@ -695,7 +792,7 @@ pattern (`^chrome_crashpad`) to match the name only.
 | `psm completions <shell>` | print a shell completion script; see [Tab completion](#tab-completion) |
 
 The daily loop is top level: `new`, `snap`, `diff`, `report`, `status`,
-`procs`, `info`, plus `export`/`import` for moving snapshots around.
+`procs`, `info`, `track`, plus `export`/`import` for moving snapshots around.
 Everything else about sessions is under `psm sessions`: `list` (the
 default), `activate`, `deactivate`, `compare`, `export`, `import`,
 `delete`, `purge` and `reset` (the whole database). `psm snapshots`
@@ -981,6 +1078,34 @@ lifetime average (CPU time divided by process age), like `ps`.
 
 **`%MEM`** is RSS divided by total memory.
 
+### Memory metrics
+
+| Metric | Source | What it is |
+|---|---|---|
+| rss | `VmRSS` | bytes of the process in RAM right now; not swapped-out pages, not mapped-but-untouched pages (those are in VSZ) |
+| anon | `RssAnon` | heap, stack, `malloc`: memory the program allocated itself |
+| file | `RssFile` | file-backed pages: the binary, shared libraries, mapped files; the kernel drops them under pressure and reads them back |
+| shmem | `RssShmem` | shared memory and tmpfs pages |
+| pss | `smaps_rollup` (`--deep`) | rss with every shared page divided between its users; sums correctly over a group |
+| swap | `VmSwap` | pages of the process moved out of RAM |
+
+Which one to watch:
+
+- *Is my program leaking, how much did it allocate?* anon. Heap and
+  stack only, no libraries, no cache noise. Growing without coming
+  back is a leak.
+- *Will this machine run out of RAM?* rss, or better the machine's
+  `MemAvailable` (`psm info`, `series[].system.mem_available` in
+  `track`). File pages are reclaimable but occupy RAM until there is
+  pressure.
+- *Did the new version use more memory than the old?* anon. The file
+  part is the same binaries either way.
+- *Summing a tree (chrome, cargo + sixteen rustc)?* anon or pss.
+  Plain rss counts every shared library once per process.
+
+Rule of thumb: anon for the program's behaviour, rss for the
+machine's. `--metric anon` makes it the measure of a diff.
+
 **RSS** summed over a group double-counts shared pages. Three ways
 around that:
 
@@ -1158,6 +1283,11 @@ json_options = "full" # full, safe, none             (--json=LEVEL)
 [diff]
 metric = "total"      # total, anon, pss             (--metric)
 min_memory_delta = "1M"   #                          (--min-delta)
+
+[track]
+every = "1s"          # sample period of `track`     (--every)
+warmup = "0s"         # dropped from min/max/avg     (--warmup)
+pause = "0s"          # wait between --times runs    (--pause)
 ```
 
 Precedence, highest first: command-line flag, environment variable,
@@ -1196,6 +1326,8 @@ path is not readable.
 
 - Linux only.
 - A process that starts **and** exits between two snapshots is never seen.
+  The same for `track`: between two samples, so is a memory peak;
+  `--every 100ms` narrows the gap.
 - A snapshot is not atomic: the process table is read over a few
   milliseconds.
 - User names come from `/etc/passwd`; LDAP/NSS users show as a numeric uid.

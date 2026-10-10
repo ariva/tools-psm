@@ -186,6 +186,18 @@ const FAQ: &[(&str, &[(&str, &str)])] = &[
                 "How do I send a diff to a server?",
                 "psm diff --json | curl -d @- $URL",
             ),
+            (
+                "How much memory did my build use?",
+                "psm track -- cargo build   (min/max/avg while it runs; --times 5 to compare runs)",
+            ),
+            (
+                "Is this process leaking while it runs?",
+                "psm track --pid <pid> --warmup 30s   (LAST = MAX on the anon row, run after run)",
+            ),
+            (
+                "rss or anon: which one do I look at?",
+                "psm diff --metric anon   (anon: its own allocations; rss: all it occupies in RAM)",
+            ),
         ],
     ),
     (

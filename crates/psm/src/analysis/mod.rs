@@ -3,4 +3,5 @@
 pub mod diff;
 pub mod group;
 pub mod reports;
+pub mod track;
 pub mod view;
