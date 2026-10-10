@@ -1,5 +1,21 @@
 # CHANGES
 
+## v3.0.1 — 2026-10-10
+
+### Summary
+A `track` command for min/max/avg of a running program, and shell completion verified in real bash, zsh and fish
+
+### New Features
+- Add a `track` command that samples a program while it runs and prints min/max/avg per metric (786101c)
+
+### Fixes
+- Complete `report <kind>`, `procs list` and `completions <shell>` right after the command only; fish gets the positional values it lacked; zsh completes options between `track` words and the command after `track --` (3448906)
+
+### Other
+- Verify shell completion in bash, zsh and fish through Docker (`just test-completions`) (3448906)
+- Update Install section to the README (4469c47)
+- Add an Update section to the README (971f3c4)
+
 ## v3.0.0 — 2026-10-08
 
 ### Summary
