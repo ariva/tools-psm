@@ -47,7 +47,7 @@ fn spawn_samples_until_the_command_exits() {
     assert!(o.status.success(), "{}", String::from_utf8_lossy(&o.stderr));
     let text = stdout(&o);
     assert!(
-        text.contains("TRACK  sh -c sleep 0.35   exit 0   wall "),
+        text.contains("TRACK  sh -c sleep 0.35   exit 0   started 20") && text.contains("   wall "),
         "{text}"
     );
     assert!(
@@ -207,7 +207,7 @@ fn words_mode_matches_the_fixture_tree() {
         ],
     );
     assert!(
-        text.starts_with("TRACK  code (app)   stopped by --for   wall "),
+        text.starts_with("TRACK  code (app)   stopped by --for   started 20"),
         "{text}"
     );
     assert!(
@@ -242,11 +242,14 @@ fn times_repeats_a_command_and_compares_the_runs() {
     assert!(o.status.success(), "{}", String::from_utf8_lossy(&o.stderr));
     let text = stdout(&o);
     assert!(
-        text.contains("   runs 3 (1 skipped)   every 0.1s, warmup 0.0s, pause 0.1s   total "),
+        text.contains("   runs 3 (1 skipped)   every 0.1s, warmup 0.0s, pause 0.1s   started 20")
+            && text.contains("   total "),
         "{text}"
     );
     assert!(
-        text.contains("\nRUN  EXIT  WALL  RSS MAX  ANON MAX  CPU AVG  THREADS MAX  PROCS MAX\n"),
+        text.contains(
+            "\nRUN  STARTED   EXIT  WALL  RSS MAX  ANON MAX  CPU AVG  THREADS MAX  PROCS MAX\n"
+        ),
         "{text}"
     );
     assert!(text.contains("  skipped\n"), "{text}");

@@ -21,7 +21,7 @@ use crate::cli::FilterArgs;
 use crate::collect::raw;
 use crate::model::Filter;
 use crate::output::{
-    Cell, Table, human, human_duration, json_document, now_utc, out, parse_duration,
+    Cell, Table, human, human_duration, json_document, now_local, now_utc, out, parse_duration,
 };
 
 pub struct Args {
@@ -85,7 +85,9 @@ struct Run {
     /// Why it ended: `exit`, `gone`, `for`, `ctrl-c`; `None` while running.
     ended: Option<&'static str>,
     exit: Option<i32>,
+    /// UTC, for the document; local, for the terminal.
     started: String,
+    started_local: String,
     wall_ms: u64,
     skipped: bool,
     samples: Vec<Sample>,
@@ -382,6 +384,7 @@ fn run_once(
         ended: None,
         exit: None,
         started: now_utc(),
+        started_local: now_local(),
         wall_ms: 0,
         skipped: n <= settings.skip_runs,
         samples: Vec::new(),
@@ -688,9 +691,10 @@ fn host_line(head: &Head, runs: &[&Run]) -> String {
 /// The one-run output: header, host, the metric table.
 fn single(head: &Head, run: &Run) -> String {
     let mut text = format!(
-        "TRACK  {}   {}   wall {}   samples {}",
+        "TRACK  {}   {}   started {}   wall {}   samples {}",
         head.target_text,
         ending(run),
+        run.started_local,
         ms(run.wall_ms),
         run.stats.samples
     );
@@ -767,10 +771,11 @@ fn bench(
         text.push_str(&format!(" ({skipped} skipped)"));
     }
     text.push_str(&format!(
-        "   every {}, warmup {}, pause {}   total {}",
+        "   every {}, warmup {}, pause {}   started {}   total {}",
         secs(settings.every),
         secs(settings.warmup),
         secs(settings.pause),
+        runs.first().map_or("-", |r| r.started_local.as_str()),
         secs(total)
     ));
     if let Some(r) = runs.iter().find(|r| r.status != "done") {
@@ -781,6 +786,7 @@ fn bench(
     text.push('\n');
     let mut t = Table::new(&[
         ("RUN", "run"),
+        ("STARTED", "started"),
         ("EXIT", "exit"),
         ("WALL", "wall"),
         ("RSS MAX", "rss_max"),
@@ -794,6 +800,8 @@ fn bench(
     for r in runs {
         t.rows.push(vec![
             Cell::Int(Some(r.run as i64)),
+            // Time of day; the date is in the header.
+            Cell::text(r.started_local.rsplit(' ').next().unwrap_or("").to_string()),
             Cell::text(r.exit.map_or("-".to_string(), |c| c.to_string())),
             Cell::text(ms(r.wall_ms)),
             Cell::Bytes(get(&r.stats, "rss", |s| s.max).map(|v| v as i64)),

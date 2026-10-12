@@ -138,6 +138,22 @@ pub fn build_info() -> Value {
     })
 }
 
+/// The current local time as the lists show it: `2026-10-07 23:55:03`.
+pub fn now_local() -> String {
+    let now = unsafe { libc::time(std::ptr::null_mut()) };
+    let mut tm: libc::tm = unsafe { std::mem::zeroed() };
+    unsafe { libc::localtime_r(&now, &mut tm) };
+    format!(
+        "{:04}-{:02}-{:02} {:02}:{:02}:{:02}",
+        tm.tm_year + 1900,
+        tm.tm_mon + 1,
+        tm.tm_mday,
+        tm.tm_hour,
+        tm.tm_min,
+        tm.tm_sec
+    )
+}
+
 /// The current time as the database writes it: `2026-10-07T21:55:03Z`.
 pub fn now_utc() -> String {
     utc(SystemTime::now())

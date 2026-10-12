@@ -70,7 +70,7 @@ psm track --every 500ms -- cargo build -q -p tool-psm --release
 ```
 
 ```text
-TRACK  cargo build -q -p tool-psm --release   exit 0   wall 5.2s   samples 11
+TRACK  cargo build -q -p tool-psm --release   exit 0   started 2026-10-09 22:44:56   wall 5.2s   samples 11
 HOST   box, 20 cpus, 125.51 GiB, free min 106.14 GiB (of 106.60 GiB at start), system cpu avg 39% max 89%, load 2.1
 METRIC       MIN      MAX      AVG     LAST  AT MAX
 rss      134 MiB  627 MiB  421 MiB  447 MiB  3.5s
@@ -86,8 +86,8 @@ Reading it:
 
 - Between the two rules is whatever the command printed; psm adds
   nothing while it runs.
-- `exit 0`, `wall 5.2s`: the command's own exit code (psm exits with
-  it too) and how long it ran. `samples 11`: one every 500 ms.
+- `exit 0`, `started …`, `wall 5.2s`: the command's own exit code (psm
+  exits with it too), when it started (local time) and how long it ran. `samples 11`: one every 500 ms.
 - `rss` peaked at 627 MiB 3.5 s in; `anon` (its own allocations) at
   514 MiB at the same moment. The difference is the file-backed part:
   the compiler binaries and libraries.
@@ -108,12 +108,12 @@ psm track --times 3 --skip-runs 1 --every 100ms --pause 300ms -- cargo test -q -
 ```
 
 ```text
-TRACK  cargo test -q -p tool-psm --test sessions   runs 3 (1 skipped)   every 0.1s, warmup 0.0s, pause 0.3s   total 2.6s
+TRACK  cargo test -q -p tool-psm --test sessions   runs 3 (1 skipped)   every 0.1s, warmup 0.0s, pause 0.3s   started 2026-10-09 22:51:10   total 2.6s
 HOST   box, 20 cpus, 125.51 GiB, free min 106.39 GiB (of 106.42 GiB at start), system cpu avg 11% max 14%, load 2.1
-RUN  EXIT  WALL  RSS MAX  ANON MAX  CPU AVG  THREADS MAX  PROCS MAX
-  1  0     0.7s   71 MiB    25 MiB      2.2            8          4  skipped
-  2  0     0.7s   46 MiB    21 MiB      2.2            6          2
-  3  0     0.7s   71 MiB    25 MiB      2.2            8          4
+RUN  STARTED   EXIT  WALL  RSS MAX  ANON MAX  CPU AVG  THREADS MAX  PROCS MAX
+  1  22:51:10  0     0.7s   71 MiB    25 MiB      2.2            8          4  skipped
+  2  22:51:11  0     0.7s   46 MiB    21 MiB      2.2            6          2
+  3  22:51:12  0     0.7s   71 MiB    25 MiB      2.2            8          4
 
 FINAL (runs 2–3)     MIN     MAX     AVG  SPREAD
 wall                0.7s    0.7s    0.7s    0.0s
@@ -146,7 +146,7 @@ psm track --warmup 1s --every 500ms -- python3 -c "$GROW"
 ```
 
 ```text
-TRACK  python3 -c import time blocks = [] for i in range(40): blocks.append(bytearray(8 * 1024 * 1024)) time.sleep(0.1) time.sleep(1)   exit 0   wall 5.2s   samples 11, warmup 2 dropped
+TRACK  python3 -c import time blocks = [] for i in range(40): blocks.append(bytearray(8 * 1024 * 1024)) time.sleep(0.1) time.sleep(1)   exit 0   started 2026-10-09 22:48:02   wall 5.2s   samples 11, warmup 2 dropped
 HOST   box, 20 cpus, 125.51 GiB, free min 106.24 GiB (of 106.66 GiB at start), system cpu avg 7% max 10%, load 2.4
 METRIC      MIN      MAX      AVG     LAST  AT MAX
 rss      99 MiB  331 MiB  239 MiB  331 MiB  4.0s
@@ -190,7 +190,7 @@ psm track --name python3 --group name --for 3s --every 500ms
 ```
 
 ```text
-TRACK  --name python3 (name)   stopped by --for   wall 3.0s   samples 6
+TRACK  --name python3 (name)   stopped by --for   started 2026-10-09 22:49:30   wall 3.0s   samples 6
 HOST   box, 20 cpus, 125.51 GiB, free min 106.37 GiB (of 106.53 GiB at start), system cpu avg 3% max 4%, load 1.1
 METRIC       MIN      MAX      AVG     LAST  AT MAX
 rss       43 MiB  235 MiB  139 MiB  235 MiB  2.5s
@@ -308,7 +308,7 @@ what the other parts of the output are:
 |---|---|
 | header end | `exit N` (a started command), `gone` (pid or words target disappeared), `stopped by --for`, `interrupted` (Ctrl-C) |
 | `samples N, warmup M dropped` | samples taken, and how many fell inside `--warmup` (still in the saved series) |
-| `RUN` table | one row per run with `WALL`, each metric's peak and the average CPU; `skipped` marks runs left out of `FINAL` |
+| `RUN` table | one row per run with when it started (time of day; the date is in the header), `WALL`, each metric's peak and the average CPU; `skipped` marks runs left out of `FINAL` |
 | `FINAL` | the smallest, largest and average peak over the counted runs, and `SPREAD` = max − min |
 | legend line | the one-line reminder under every table; `psm help track` has the long form |
 

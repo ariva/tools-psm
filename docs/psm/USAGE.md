@@ -487,11 +487,12 @@ psm track --times 5 --skip-runs 1 --pause 2s -- ./bench
 On a terminal a started command's output is framed: a `tracking ...`
 line and a rule before it, a rule and the version line after it. Then
 the output is a header
-(`TRACK`, the target, how it ended, wall time, samples), a `HOST` line (cores, RAM, lowest `MemAvailable` seen,
+(`TRACK`, the target, how it ended, when it started in local time,
+wall time, samples), a `HOST` line (cores, RAM, lowest `MemAvailable` seen,
 whole-machine CPU, load) and one row per metric:
 
 ```text
-TRACK  cargo build -q -p tool-psm --release   exit 0   wall 5.2s   samples 11
+TRACK  cargo build -q -p tool-psm --release   exit 0   started 2026-10-09 22:44:56   wall 5.2s   samples 11
 HOST   box, 20 cpus, 125.51 GiB, free min 106.14 GiB (of 106.60 GiB at start), system cpu avg 39% max 89%, load 2.1
 METRIC       MIN      MAX      AVG     LAST  AT MAX
 rss      134 MiB  627 MiB  421 MiB  447 MiB  3.5s
@@ -513,7 +514,7 @@ empty. A legend line under the table says the same; `psm help track`
 lists the rows. With `--times` the table is one row per
 run (exit, wall, each metric's peak, average CPU) followed by `FINAL`:
 min, max, average and spread (max − min) of those peaks over the runs
-that count.
+that count; each run's row carries its start time of day.
 
 ### The track document
 
