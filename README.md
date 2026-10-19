@@ -1,4 +1,5 @@
 # tools-psm
+[Install](#Install) · [Support](#buy-me-pizzacoffeetea) · [Tools](#tools) · [Commands](#commands) · [Repository](#repository) · [License](#license)
 
 `psm` (process state monitor) answers "what did this program do to
 the machine": it takes named snapshots of the Linux process table and
@@ -18,6 +19,15 @@ psm snap after-update       # keep this state
 psm report trend            # growing, shrinking, noisy or flat, over the session
 psm track -- cargo build    # min/max/avg of memory, CPU, threads while it runs; --times 5 to bench
 ```
+
+
+## Buy me Pizza/Coffee/Tea
+* Like what I do? PSM is free and stays free. If it saved you time or allowed you to be more productive, you can support the next release: **[Buy me a coffee ☕](https://buymeacoffee.com/ariva)** — or scan the code.
+
+<p align="center"><a href="https://buymeacoffee.com/ariva"><img src="docs/assets/bmc_qr.png" alt="Buy me a coffee — QR code" width="140"></a></p>
+
+## Support
+* Have a question, found a bug, or want to suggest a feature? Send me a message: **arunas.work.hg [ AT ] [g] [m] [a] [i] [l] [.] [c] [o] [m]**.
 
 ## Tools
 
