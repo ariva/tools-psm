@@ -11,6 +11,8 @@ as growing, shrinking or flat. Live views (`procs`, `info`, `pid`,
 tools. It runs for as long as a test runs, from your shell; it is not
 a daemon.
 
+![psm around a synthetic workload: new, snap, diff --watch, track, report trend, sessions compare, --json](docs/assets/demo.gif)
+
 ```bash
 psm new chrome-update       # new session + baseline snapshot
 # ... update, run the workload ...
