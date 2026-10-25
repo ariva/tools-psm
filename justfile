@@ -89,3 +89,10 @@ smoke:
     cargo run -q -p tool-psm -- --config /dev/null new smoke
     cargo run -q -p tool-psm -- --config /dev/null snap after
     cargo run -q -p tool-psm -- --config /dev/null diff
+
+# demo recording (Docker + VHS): builds crates/psm/docker/demo/Dockerfile, plays demo.tape against a
+# synthetic workload in a private PID namespace, writes docs/assets/demo.gif (a few minutes, mostly the Rust build)
+demo:
+    docker build -f crates/psm/docker/demo/Dockerfile -t psm-demo --build-arg PSM_GIT_HASH=$(git rev-parse --short HEAD) .
+    docker run --rm --hostname demo-box --cpuset-cpus=0-3 --cap-add SYS_ADMIN --security-opt seccomp=unconfined --security-opt apparmor=unconfined -v "$PWD/docs/assets:/out" psm-demo
+    docker run --rm -v "$PWD/docs/assets:/out" --entrypoint chown psm-demo $(id -u):$(id -g) /out/demo.gif

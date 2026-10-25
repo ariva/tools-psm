@@ -6,8 +6,9 @@
 - a C compiler (SQLite is built from source by `rusqlite`)
 - `python3`, only to regenerate the test fixtures
 - Docker, only for `just test-completions` (the completion scripts in
-  real bash, zsh and fish; see [Shell completion](#shell-completion))
-  and the aarch64 builds through `cross`
+  real bash, zsh and fish; see [Shell completion](#shell-completion)),
+  `just demo` (the README recording, see [Demo](#demo)) and the aarch64
+  builds through `cross`
 
 ## Layout
 
@@ -33,6 +34,7 @@ crates/psm/
         track.rs          `track` against the real /proc (spawn, pid) and the fixture (words)
     docker/               images for checks the host cannot run; README.md there
         completions/      bash, zsh and fish completion check: `just test-completions`
+        demo/             the README recording, docs/assets/demo.gif: `just demo`
     tests/fixtures/
         generate.py       writes the two trees below
         proc/before/      fake /proc: the "before" state
@@ -66,6 +68,19 @@ fish list options only once a `-` is typed, so option cases end the
 line with `--` or are bash-only. `tests/help.rs` keeps textual anchors on the patched
 parts of the scripts, so `cargo test` still catches a clap_complete
 upgrade that moves them.
+
+### Demo
+
+`just demo` records `docs/assets/demo.gif`, the clip at the top of the
+README: `crates/psm/docker/demo/Dockerfile` compiles psm and plays
+`demo.tape` through [VHS](https://github.com/charmbracelet/vhs) in
+Docker, against a synthetic workload (`workload`, `app.py`) inside a
+private PID namespace with a fake `/proc/meminfo`, so no process, user,
+host name or memory size of the recording machine can appear. Needs
+Docker and a few minutes, most of it the Rust build in the image; not
+part of `just check`. Commit the new GIF with the change it shows. The
+`README.md` next to the Dockerfile explains the files and how to retake
+without a rebuild.
 
 ### Fixtures
 

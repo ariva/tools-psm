@@ -1,0 +1,17 @@
+#!/usr/bin/env bash
+# The tape's first, hidden command, run as root in the container: a fresh
+# PID namespace (VHS, ttyd and Chrome stay outside it), the fake
+# proc/meminfo and proc/loadavg bound over the host's (the kernel is
+# shared, so without this the diff footer and the HOST row of `track`
+# would show the recording machine's memory and load), the workload
+# copied to the `dev` home, then a `dev` shell. Needs CAP_SYS_ADMIN.
+set -euo pipefail
+HERE="$(dirname "$(readlink -f "$0")")"
+if [[ -z "${DEMO_INSIDE:-}" ]]; then
+    exec env DEMO_INSIDE=1 unshare -fp --mount-proc "$0"
+fi
+mount --bind "$HERE/proc/meminfo" /proc/meminfo
+mount --bind "$HERE/proc/loadavg" /proc/loadavg
+cp "$HERE/workload" "$HERE/app.py" /home/dev/
+chown dev:dev /home/dev/workload /home/dev/app.py
+exec setpriv --reuid=dev --regid=dev --init-groups env HOME=/home/dev USER=dev DEMO_INSIDE= bash --norc

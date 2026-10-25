@@ -1,6 +1,9 @@
 //! Stamps the binary with the short commit hash and the build date, for
 //! `psm version`. Both fall back to "unknown" outside a git checkout or
-//! without the tools, so the build never fails because of them.
+//! without the tools, so the build never fails because of them. A
+//! non-empty `PSM_GIT_HASH` in the environment is used as the hash
+//! instead of asking git: for builds without the checkout, like the
+//! Docker images.
 
 use std::process::Command;
 
@@ -13,12 +16,16 @@ fn run(cmd: &str, args: &[&str]) -> Option<String> {
 }
 
 fn main() {
-    let hash = match run("git", &["rev-parse", "--short", "HEAD"]).filter(|h| !h.is_empty()) {
-        Some(h) if run("git", &["status", "--porcelain"]).is_some_and(|s| !s.is_empty()) => {
-            format!("{h}-dirty")
-        }
+    println!("cargo:rerun-if-env-changed=PSM_GIT_HASH");
+    let hash = match std::env::var("PSM_GIT_HASH").ok().filter(|h| !h.is_empty()) {
         Some(h) => h,
-        None => "unknown".into(),
+        None => match run("git", &["rev-parse", "--short", "HEAD"]).filter(|h| !h.is_empty()) {
+            Some(h) if run("git", &["status", "--porcelain"]).is_some_and(|s| !s.is_empty()) => {
+                format!("{h}-dirty")
+            }
+            Some(h) => h,
+            None => "unknown".into(),
+        },
     };
     let date = run("date", &["-u", "+%Y-%m-%d"])
         .filter(|d| !d.is_empty())

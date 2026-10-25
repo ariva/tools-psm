@@ -1,12 +1,14 @@
 # Docker images for psm
 
-Images that check psm in environments the host does not have. Each
-subfolder is one image with its own Dockerfile and a `just` recipe that
-builds and runs it; none of them is needed to build or install psm.
+Images for things the host should not do itself: checks in shells it
+does not have, and a demo recording that must show no real process.
+Each subfolder is one image with its own Dockerfile and a `just` recipe
+that builds and runs it; none of them is needed to build or install psm.
 
 | Folder | What it checks | Recipe |
 |---|---|---|
 | `completions/` | the bash, zsh and fish completion scripts in the real shells: `psm report trend <TAB>` and friends, one shared case list | `just test-completions` |
+| `demo/` | records `docs/assets/demo.gif`: psm around a synthetic workload, in a private PID namespace, through [VHS](https://github.com/charmbracelet/vhs) | `just demo` |
 
 The build context is the repository root (`docker build -f
 crates/psm/docker/<image>/Dockerfile .`), so an image can compile psm
@@ -37,3 +39,37 @@ docker run --rm -v "$PWD/crates/psm/docker/completions:/opt/completions:ro" psm-
 Add a case for every completion fix in `cli/completions.rs`; the
 textual anchors in `tests/help.rs` cover the same patches without
 Docker.
+
+## demo/
+
+| File | Role |
+|---|---|
+| `Dockerfile` | `rust:1-slim-bookworm` builds `psm --release` (`.git` is outside the context, so `just demo` passes `--build-arg PSM_GIT_HASH` for the version line); `ghcr.io/charmbracelet/vhs` (ttyd, ffmpeg, headless Chrome) gets the binary, `jq`, a `dev` user and this folder as `/opt/demo`; the entrypoint is `vhs /opt/demo/demo.tape` |
+| `demo.tape` | the script VHS plays: terminal size, theme, every command typed and how long its output stays on screen; `Output demo.gif` is relative to `/out`, the volume `just demo` mounts on `docs/assets` (a second `Output demo.mp4` line is all an MP4 needs) |
+| `enter` | the tape's first, hidden command: `unshare -fp --mount-proc` into a fresh PID namespace, `proc/meminfo` and `proc/loadavg` bind-mounted over the kernel's, the workload copied to `/home/dev`, then a `dev` shell |
+| `proc/` | the `meminfo` (16 GiB, 10 GiB available) and `loadavg` the demo shows instead of the host's |
+| `workload` | `start [CACHE_MB]`, `build`, `stop`, `restart`: the fake programs the commands look at, each a symlink to python3 named `api-server`, `cache-daemon`, `job-runner`, `worker` or `build-job` so the process table shows those names |
+| `app.py` | what those programs do: allocate memory that is really resident, hold it, start and kill workers, spin threads for a few seconds; nothing is read, written or connected to |
+
+Nothing on screen is real. `enter` puts the shell in a fresh PID
+namespace as user `dev`, so the process table holds only that shell and
+the workload (VHS, ttyd and Chrome are outside it); the hostname is
+`demo-box` (`--hostname`); the database and config are the `dev` user's
+in the container. The kernel is shared, so what psm reads about the
+machine is faked where it shows: `proc/meminfo` and `proc/loadavg` are
+bound over `/proc`'s (the diff footer, the `HOST` row of `track`),
+`--cpuset-cpus=0-3` makes the CPU count 4, and the tape keeps `psm info`
+off the screen. The whole-machine CPU percentage in that `HOST` row
+comes from the real `/proc/stat`. The mounts and the `unshare` are why
+`just demo` runs the container with `--cap-add SYS_ADMIN` and seccomp
+and apparmor unconfined. A last `docker run` hands the GIF to the
+calling user; the volume is written as root otherwise.
+
+Iterating on the tape or the workload without a rebuild (the image
+already has the binary):
+
+```bash
+docker run --rm --hostname demo-box --cpuset-cpus=0-3 --cap-add SYS_ADMIN \
+    --security-opt seccomp=unconfined --security-opt apparmor=unconfined \
+    -v "$PWD/docs/assets:/out" -v "$PWD/crates/psm/docker/demo:/opt/demo:ro" psm-demo
+```

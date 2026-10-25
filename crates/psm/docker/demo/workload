@@ -1,0 +1,41 @@
+#!/usr/bin/env bash
+# The demo's workload: `start [CACHE_MB]` runs three fake programs in the
+# background (cache-daemon holds CACHE_MB, default 48: the second session
+# of the demo doubles it so `sessions compare` has something to say),
+# `build` runs one in the foreground for four seconds, `stop` ends them
+# all, `restart [CACHE_MB]` is stop + start. Each program is app.py started through a
+# symlink to python3 that carries the program's name (see app.py).
+set -euo pipefail
+APP="$(dirname "$(readlink -f "$0")")/app.py"
+export DEMO_BIN=/tmp/demo-bin   # app.py starts workers from here too
+BIN="$DEMO_BIN"
+
+case "${1:-}" in
+    start)
+        mkdir -p "$BIN"
+        for name in api-server cache-daemon job-runner worker build-job; do
+            ln -sf "$(command -v python3)" "$BIN/$name"
+        done
+        "$BIN/api-server" "$APP" grow 8 160 6 &
+        "$BIN/cache-daemon" "$APP" hold "${2:-48}" &
+        "$BIN/job-runner" "$APP" churn &
+        disown -a
+        echo "started api-server, cache-daemon, job-runner"
+        ;;
+    build)
+        exec "$BIN/build-job" "$APP" build 4
+        ;;
+    stop)
+        pkill -f "$APP" || true
+        echo "stopped"
+        ;;
+    restart)
+        "$0" stop >/dev/null
+        sleep 0.5
+        "$0" start "${2:-48}"
+        ;;
+    *)
+        echo "usage: workload start [CACHE_MB]|build|stop|restart [CACHE_MB]" >&2
+        exit 2
+        ;;
+esac
