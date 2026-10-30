@@ -336,7 +336,11 @@ Every table is a `format::Table` of typed cells (`Text`, `Int`,
 - CSV: raw values.
 
 So there is one place where a column is defined and no separate JSON
-structs to keep in step.
+structs to keep in step. A `Table::new` list is rendered with `#`
+(JSON `n`), the row's position after sort and cut, as its first column,
+so a row can be named by number; `Table::plain` is for key/value tables
+(track statistics, diff totals, meminfo) and lists that carry their own
+number (FAQ, track runs).
 
 All output goes through `output::out`, which exits quietly when the
 pipe is closed (`psm procs | head`). JSON goes through `print_json`,

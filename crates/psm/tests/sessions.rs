@@ -84,8 +84,9 @@ fn session_rules() {
     assert_eq!(list[2]["label"], "now");
     assert_eq!(list[2]["processes"], 5);
     let text = e.ok("after", &["snapshots"]);
+    // `#` first, then `>` in the ID column.
     assert!(
-        text.lines().last().unwrap().trim_start().starts_with("> "),
+        text.lines().last().unwrap().split_whitespace().nth(1) == Some(">"),
         "{text}"
     );
     assert_eq!(e.ok("after", &["-l"]).lines().count(), text.lines().count());

@@ -106,27 +106,27 @@ DIFF   #0 baseline -> now
 Processes: 5 -> 5    new 2, gone 2, restarted 1
 
 NEW PROCESSES
-PID  PPID     RSS  PROCESS
-600   100  72 MiB  node
-400     1   7 MiB  beta
+#  PID  PPID     RSS  PROCESS
+1  600   100  72 MiB  node
+2  400     1   7 MiB  beta
 
 GONE PROCESSES
-PID     RSS  PROCESS
-200  42 MiB  old-helper
-400   5 MiB  alpha
+#  PID     RSS  PROCESS
+1  200  42 MiB  old-helper
+2  400   5 MiB  alpha
 
 RESTARTED PROCESSES
-OLD PID  NEW PID   BEFORE    AFTER     DELTA  PROCESS
-    300      310  812 MiB  344 MiB  -468 MiB  rust-analyzer
+#  OLD PID  NEW PID   BEFORE    AFTER     DELTA  PROCESS
+1      300      310  812 MiB  344 MiB  -468 MiB  rust-analyzer
 
 MEMORY IMPACT   #0 baseline -> now   (RSS + swap)
-PROCESS        PID  STATUS       BEFORE     AFTER     DELTA
-rust-analyzer  310  restarted   812 MiB   344 MiB  -468 MiB
-code           100  running    1000 MiB  1.37 GiB  +400 MiB
-node           600  new               -    72 MiB   +72 MiB
-old-helper     200  gone         42 MiB         -   -42 MiB
-beta           400  new               -     7 MiB    +7 MiB
-alpha          400  gone          5 MiB         -    -5 MiB
+#  PROCESS        PID  STATUS       BEFORE     AFTER     DELTA
+1  rust-analyzer  310  restarted   812 MiB   344 MiB  -468 MiB
+2  code           100  running    1000 MiB  1.37 GiB  +400 MiB
+3  node           600  new               -    72 MiB   +72 MiB
+4  old-helper     200  gone         42 MiB         -   -42 MiB
+5  beta           400  new               -     7 MiB    +7 MiB
+6  alpha          400  gone          5 MiB         -    -5 MiB
 Net process change: -36 MiB
 
 PROCESS COUNTS
@@ -139,12 +139,12 @@ old-helper       1      0     -1
 TOP 5 MEMORY IMPACT   #0 baseline -> now
 
 By process   (RSS + swap)
-PROCESS        PID  STATUS       BEFORE     AFTER     DELTA
-rust-analyzer  310  restarted   812 MiB   344 MiB  -468 MiB
-code           100  running    1000 MiB  1.37 GiB  +400 MiB
-node           600  new               -    72 MiB   +72 MiB
-old-helper     200  gone         42 MiB         -   -42 MiB
-beta           400  new               -     7 MiB    +7 MiB
+#  PROCESS        PID  STATUS       BEFORE     AFTER     DELTA
+1  rust-analyzer  310  restarted   812 MiB   344 MiB  -468 MiB
+2  code           100  running    1000 MiB  1.37 GiB  +400 MiB
+3  node           600  new               -    72 MiB   +72 MiB
+4  old-helper     200  gone         42 MiB         -   -42 MiB
+5  beta           400  new               -     7 MiB    +7 MiB
 
 By program   (RSS + swap)
 PROGRAM        #BEFORE  #AFTER    BEFORE     AFTER     DELTA
@@ -184,19 +184,19 @@ psm procs tsserver node            # every word must match
 ```
 
 ```text
-PID  PPID  USER    %CPU  %MEM       RSS  THR  COMMAND
-100     1  alice    6.1   6.1  1000 MiB   18  code
-300     1  alice    0.0   5.0   812 MiB   24  rust-analyzer
-200     1  alice    0.0   0.3    42 MiB    1  old-helper
+#  PID  PPID  USER    %CPU  %MEM       RSS  THR  COMMAND
+1  100     1  alice    6.1   6.1  1000 MiB   18  code
+2  300     1  alice    0.0   5.0   812 MiB   24  rust-analyzer
+3  200     1  alice    0.0   0.3    42 MiB    1  old-helper
 ```
 
 Grouped by cgroup, with the cgroup's own memory total next to summed RSS:
 
 ```text
-CGROUP          COUNT  %CPU  %MEM  CGROUP MEM       RSS  THR
-app-code.scope      1   6.1   6.1    1.17 GiB  1000 MiB   18
-session.scope       3   0.0   5.2     900 MiB   859 MiB   26
-odd.service         1   0.0   0.1         n/a    20 MiB    1
+#  CGROUP          COUNT  %CPU  %MEM  CGROUP MEM       RSS  THR
+1  app-code.scope      1   6.1   6.1    1.17 GiB  1000 MiB   18
+2  session.scope       3   0.0   5.2     900 MiB   859 MiB   26
+3  odd.service         1   0.0   0.1         n/a    20 MiB    1
 ```
 
 | Option | Effect |
@@ -239,9 +239,9 @@ CPU:      3s total (3s user, 0s system)   0.1 % of one core over its life   (psm
 I/O:      read 2 MiB   written 5 MiB
 
 In session chrome-154:
-ID  LABEL     TIME                    RSS  SWAP  THR  %CPU
- 1  after     2026-09-30 09:40:02  70 MiB   0 B   11   0.1
- 2  one-hour  2026-09-30 10:41:17  72 MiB   0 B   11   0.1
+#  ID  LABEL     TIME                    RSS  SWAP  THR  %CPU
+1   1  after     2026-09-30 09:40:02  70 MiB   0 B   11   0.1
+2   2  one-hour  2026-09-30 10:41:17  72 MiB   0 B   11   0.1
 ```
 
 `Chain` is every ancestor up to init; `app` is where `--group app`
@@ -276,8 +276,8 @@ Load:       1.24  0.98  0.87
 Processes:  5    Threads: 45    (1 kernel thread hidden)
 
 TOP 3 BY CPU
-PID  PPID  USER    %CPU  %MEM       RSS  THR  COMMAND
-100     1  alice    6.1   6.1  1000 MiB   18  code
+#  PID  PPID  USER    %CPU  %MEM       RSS  THR  COMMAND
+1  100     1  alice    6.1   6.1  1000 MiB   18  code
 ...
 ```
 
@@ -389,9 +389,9 @@ Grouped by application:
 
 ```text
 MEMORY IMPACT   #0 baseline -> #1 after-upgrade   (cgroup memory.current + swap)
-CGROUP          #BEFORE  #AFTER    BEFORE     AFTER     DELTA
-app-code.scope        1       1  1.17 GiB  1.66 GiB  +500 MiB
-session.scope         3       3   900 MiB   500 MiB  -400 MiB
+#  CGROUP          #BEFORE  #AFTER    BEFORE     AFTER     DELTA
+1  app-code.scope        1       1  1.17 GiB  1.66 GiB  +500 MiB
+2  session.scope         3       3   900 MiB   500 MiB  -400 MiB
 Net group change: +100 MiB
 ```
 
@@ -440,9 +440,9 @@ psm report timeline --name code
 ```
 
 ```text
-ID  LABEL          TIME                 PROCS      USED    SWAP  MATCHED RSS+SWAP
- 0  baseline       2026-09-30 09:12:31      1  4.56 GiB     0 B          1000 MiB
- 1  after-upgrade  2026-09-30 09:12:31      1  5.51 GiB  10 MiB          1.37 GiB
+#  ID  LABEL          TIME                 PROCS      USED    SWAP  MATCHED RSS+SWAP
+1   0  baseline       2026-09-30 09:12:31      1  4.56 GiB     0 B          1000 MiB
+2   1  after-upgrade  2026-09-30 09:12:31      1  5.51 GiB  10 MiB          1.37 GiB
 ```
 
 `report cpu` counts processes still present in the second snapshot; a
@@ -583,11 +583,11 @@ psm procs --name MainThread --group parent
 ```
 
 ```text
-PPID  PARENT      COUNT  %CPU  %MEM       RSS  THR
-4033  zed-editor     19   0.8   1.5  1.86 GiB  173
-4038  MainThread      4   0.3   1.2  1.49 GiB   36
-1256  sh              1   0.1   0.4   563 MiB   47
-2642  MainThread      2   0.0   0.2   197 MiB   14
+#  PPID  PARENT      COUNT  %CPU  %MEM       RSS  THR
+1  4033  zed-editor     19   0.8   1.5  1.86 GiB  173
+2  4038  MainThread      4   0.3   1.2  1.49 GiB   36
+3  1256  sh              1   0.1   0.4   563 MiB   47
+4  2642  MainThread      2   0.0   0.2   197 MiB   14
 ```
 
 Mostly the editor, but four have another `MainThread` as parent: Node
@@ -600,9 +600,9 @@ psm procs --name MainThread --group app
 ```
 
 ```text
-APP         COUNT  %CPU  %MEM       RSS  THR
-zed-editor     25   1.1   2.8  3.49 GiB  223
-just            1   0.1   0.4   563 MiB   47
+#  APP         COUNT  %CPU  %MEM       RSS  THR
+1  zed-editor     25   1.1   2.8  3.49 GiB  223
+2  just            1   0.1   0.4   563 MiB   47
 ```
 
 25 of the 26 belong to the editor; one was started from a terminal by
@@ -635,10 +635,10 @@ psm diff --name MainThread --group parent --memory
 
 ```text
 MEMORY IMPACT   #0 baseline -> now   (RSS + swap)
-PARENT           #BEFORE  #AFTER    BEFORE     AFTER     DELTA
-4033 zed-editor       12      19  1.10 GiB  1.86 GiB  +778 MiB
-4038 MainThread        2       4   749 MiB  1.49 GiB  +777 MiB
-1256 sh                1       1   560 MiB   563 MiB    +3 MiB
+#  PARENT           #BEFORE  #AFTER    BEFORE     AFTER     DELTA
+1  4033 zed-editor       12      19  1.10 GiB  1.86 GiB  +778 MiB
+2  4038 MainThread        2       4   749 MiB  1.49 GiB  +777 MiB
+3  1256 sh                1       1   560 MiB   563 MiB    +3 MiB
 Net group change: +1.52 GiB
 ```
 
@@ -653,11 +653,11 @@ psm diff --name chrome --memory
 
 ```text
 MEMORY IMPACT   #0 baseline -> now   (RSS + swap)
-PROCESS      PID  STATUS     BEFORE     AFTER     DELTA
-chrome   4042574  running   361 MiB   634 MiB  +273 MiB
-chrome    240568  new             -   188 MiB  +188 MiB
-chrome    228440  gone       82 MiB         -   -82 MiB
-chrome   4041135  running  1.55 GiB  1.58 GiB   +31 MiB
+#  PROCESS      PID  STATUS     BEFORE     AFTER     DELTA
+1  chrome   4042574  running   361 MiB   634 MiB  +273 MiB
+2  chrome    240568  new             -   188 MiB  +188 MiB
+3  chrome    228440  gone       82 MiB         -   -82 MiB
+4  chrome   4041135  running  1.55 GiB  1.58 GiB   +31 MiB
 Net process change: +410 MiB
 ```
 
@@ -715,10 +715,10 @@ psm procs --name chrome --sort cpu --top 3
 ```
 
 ```text
-    PID     PPID  USER   %CPU  %MEM       RSS  THR  COMMAND
-4041081     3749  alice  17.6   1.3  1.65 GiB   40  chrome
-4041135  4041108  alice   3.9   1.3  1.58 GiB   12  chrome
-4042574  4041108  alice   2.0   0.5   634 MiB   24  chrome
+#      PID     PPID  USER   %CPU  %MEM       RSS  THR  COMMAND
+1  4041081     3749  alice  17.6   1.3  1.65 GiB   40  chrome
+2  4041135  4041108  alice   3.9   1.3  1.58 GiB   12  chrome
+3  4042574  4041108  alice   2.0   0.5   634 MiB   24  chrome
 ```
 
 ### Did the new version use more memory?
@@ -810,9 +810,9 @@ psm sessions
 ```
 
 ```text
-ID  NAME        CREATED              SNAPS  STATE     DESCRIPTION
- 1  chrome-153  2026-09-28 14:17:02      5  inactive
- 2  chrome-154  2026-09-30 08:42:10      4  active    after the update
+#  ID  NAME        CREATED              SNAPS  STATE     DESCRIPTION
+1   1  chrome-153  2026-09-28 14:17:02      5  inactive
+2   2  chrome-154  2026-09-30 08:42:10      4  active    after the update
 ```
 
 ```bash

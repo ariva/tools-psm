@@ -53,6 +53,9 @@ pub struct Table {
     /// `(title, json key)`
     pub cols: Vec<(&'static str, &'static str)>,
     pub rows: Vec<Vec<Cell>>,
+    /// A list gets `#` (JSON `n`), the row's position, as its first column
+    /// when rendered; a key/value table (`plain`) does not.
+    numbered: bool,
 }
 
 impl Table {
@@ -60,7 +63,37 @@ impl Table {
         Table {
             cols: cols.to_vec(),
             rows: Vec::new(),
+            numbered: true,
         }
+    }
+
+    /// A table whose rows are metrics or fields, not items: no `#` column.
+    pub fn plain(cols: &[(&'static str, &'static str)]) -> Table {
+        Table {
+            numbered: false,
+            ..Table::new(cols)
+        }
+    }
+
+    /// Columns and rows as rendered: with the `#` column when numbered.
+    fn shown(&self) -> (Vec<(&'static str, &'static str)>, Vec<Vec<Cell>>) {
+        if !self.numbered {
+            return (self.cols.clone(), self.rows.clone());
+        }
+        let cols = std::iter::once(("#", "n"))
+            .chain(self.cols.iter().copied())
+            .collect();
+        let rows = self
+            .rows
+            .iter()
+            .enumerate()
+            .map(|(i, r)| {
+                std::iter::once(Cell::Int(Some(i as i64 + 1)))
+                    .chain(r.iter().cloned())
+                    .collect()
+            })
+            .collect();
+        (cols, rows)
     }
 
     pub fn truncate(&mut self, top: Option<usize>) {
@@ -74,16 +107,16 @@ impl Table {
         if self.rows.is_empty() {
             return "(none)".into();
         }
-        let cells: Vec<Vec<String>> = self
-            .rows
+        let (cols, rows) = self.shown();
+        let cells: Vec<Vec<String>> = rows
             .iter()
             .map(|r| r.iter().map(Cell::render).collect())
             .collect();
-        let titles: Vec<String> = self.cols.iter().map(|c| c.0.to_string()).collect();
+        let titles: Vec<String> = cols.iter().map(|c| c.0.to_string()).collect();
         // Per column: (left-aligned?, width).
         let layout: Vec<(bool, usize)> = (0..titles.len())
             .map(|i| {
-                let left = self.rows.iter().all(|r| matches!(r[i], Cell::Text(_)));
+                let left = rows.iter().all(|r| matches!(r[i], Cell::Text(_)));
                 let width = cells
                     .iter()
                     .map(|r| &r[i])
@@ -111,11 +144,10 @@ impl Table {
     }
 
     pub fn json(&self) -> Value {
-        self.rows
-            .iter()
+        let (cols, rows) = self.shown();
+        rows.iter()
             .map(|r| {
-                let obj: Map<String, Value> = self
-                    .cols
+                let obj: Map<String, Value> = cols
                     .iter()
                     .zip(r)
                     .map(|(c, cell)| (c.1.to_string(), cell.json()))
@@ -126,13 +158,13 @@ impl Table {
     }
 
     pub fn csv(&self) -> String {
-        let header = self
-            .cols
+        let (cols, rows) = self.shown();
+        let header = cols
             .iter()
             .map(|c| c.1.to_string())
             .collect::<Vec<_>>()
             .join(",");
-        let rows = self.rows.iter().map(|r| {
+        let rows = rows.iter().map(|r| {
             r.iter()
                 .map(|cell| match cell.json() {
                     Value::Null => String::new(),

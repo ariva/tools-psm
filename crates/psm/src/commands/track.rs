@@ -711,7 +711,7 @@ fn single(head: &Head, run: &Run) -> String {
 }
 
 fn stats_table(stats: &Stats) -> Table {
-    let mut t = Table::new(&[
+    let mut t = Table::plain(&[
         ("METRIC", "metric"),
         ("MIN", "min"),
         ("MAX", "max"),
@@ -784,7 +784,7 @@ fn bench(
     text.push('\n');
     text.push_str(&host_line(head, &runs.iter().collect::<Vec<_>>()));
     text.push('\n');
-    let mut t = Table::new(&[
+    let mut t = Table::plain(&[
         ("RUN", "run"),
         ("STARTED", "started"),
         ("EXIT", "exit"),
@@ -827,7 +827,7 @@ fn bench(
     };
     // Column titles are static; one small leak per `psm track`, not per row.
     let title: &'static str = Box::leak(format!("FINAL ({runs_label})").into_boxed_str());
-    let mut f = Table::new(&[
+    let mut f = Table::plain(&[
         (title, "row"),
         ("MIN", "min"),
         ("MAX", "max"),

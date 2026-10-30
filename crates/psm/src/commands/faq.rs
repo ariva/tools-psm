@@ -266,7 +266,7 @@ pub fn faq(words: &[String], json: bool) {
     let mut rows = Vec::new();
     let mut uses_placeholder = false;
     for (section_no, (section, questions)) in FAQ.iter().enumerate() {
-        let mut t = Table::new(&[
+        let mut t = Table::plain(&[
             ("#", "number"),
             ("QUESTION", "question"),
             ("COMMAND", "command"),

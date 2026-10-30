@@ -556,7 +556,7 @@ fn compare_sessions(
     let sum = |procs: &[&Proc], f: fn(&Proc) -> Option<i64>| {
         procs.iter().fold(None, |acc, p| add(acc, f(p)))
     };
-    let mut totals = Table::new(&[
+    let mut totals = Table::plain(&[
         ("METRIC", "metric"),
         ("OLD", "old"),
         ("NEW", "new"),

@@ -120,7 +120,7 @@ pub fn meminfo_table(a: &Snapshot, b: &Snapshot) -> Table {
         .filter(|(_, before, after)| before != after)
         .collect();
     rows.sort_by_key(|(k, before, after)| (std::cmp::Reverse((after - before).abs()), *k));
-    let mut t = Table::new(&[
+    let mut t = Table::plain(&[
         ("FIELD", "field"),
         ("BEFORE", "before"),
         ("AFTER", "after"),
