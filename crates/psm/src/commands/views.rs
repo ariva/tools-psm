@@ -81,8 +81,13 @@ pub fn show(ctx: &Ctx, snapshot: &str, view: &ViewArgs) -> Result<()> {
         stored => db.load(db.resolve(&session, stored)?)?,
     };
     let deep = view.deep.unwrap_or(s.deep);
-    // A stored snapshot holds one reading, so %CPU is the lifetime average.
-    let table = view::view_table(&s, &lifetime_cpu(&s), &ctx.view(view, deep)?)?;
+    // A sampled snapshot carries %CPU over its window; an older or unsampled
+    // one holds one reading, so %CPU is the lifetime average.
+    let cpu = match view::sampled_cpu(&s) {
+        m if m.is_empty() => lifetime_cpu(&s),
+        m => m,
+    };
+    let table = view::view_table(&s, &cpu, &ctx.view(view, deep)?)?;
     ctx.emit(&table, view.csv);
     Ok(())
 }
@@ -173,11 +178,12 @@ pub fn pid(ctx: &Ctx, pid: i64, snapshot: &str) -> Result<()> {
     // Time consumed so far (what `ps -o time` shows), then the average
     // rate over the process's life; `psm procs` measures the last 500 ms.
     lines.push(format!(
-        "CPU:      {} total ({} user, {} system)   {} of one core over its life   (psm procs shows the last 500ms)",
+        "CPU:      {} total ({} user, {} system)   {} of one core over its life   {} at the snapshot",
         human_duration(secs(p.cpu_user + p.cpu_system)),
         human_duration(secs(p.cpu_user)),
         human_duration(secs(p.cpu_system)),
-        cpu.map_or("n/a".into(), |c| format!("{c:.1} %"))
+        cpu.map_or("n/a".into(), |c| format!("{c:.1} %")),
+        p.cpu_percent.map_or("n/a".into(), |c| format!("{c:.1} %"))
     ));
     lines.push(format!(
         "I/O:      read {}   written {}",
@@ -217,7 +223,10 @@ pub fn pid(ctx: &Ctx, pid: i64, snapshot: &str) -> Result<()> {
                 Cell::Bytes(then.rss_bytes),
                 Cell::Bytes(then.swap_bytes),
                 Cell::Int(then.thread_count),
-                Cell::Pct(lifetime_cpu(&old).get(&pid).copied()),
+                Cell::Pct(
+                    then.cpu_percent
+                        .or_else(|| lifetime_cpu(&old).get(&pid).copied()),
+                ),
             ]);
         }
     }
@@ -248,6 +257,7 @@ pub fn pid(ctx: &Ctx, pid: i64, snapshot: &str) -> Result<()> {
                 "user_seconds": secs(p.cpu_user),
                 "system_seconds": secs(p.cpu_system),
                 "lifetime_percent": cpu.map(|c| (c * 10.0).round() / 10.0),
+                "snapshot_percent": p.cpu_percent.map(|c| (c * 10.0).round() / 10.0),
             },
             "io": { "read": p.read_bytes, "written": p.write_bytes },
             "session": session.as_ref().map(|x| x.name.clone()),

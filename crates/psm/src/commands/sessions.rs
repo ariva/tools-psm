@@ -48,7 +48,8 @@ pub fn snapshots(ctx: &Ctx) -> Result<()> {
         ]);
     }
     // The live state closes the list: `>` in the ID column (null in JSON), label `now`.
-    let live = super::capture::live_snapshot(ctx, None)?;
+    // Only its process count is shown, so no CPU sampling window.
+    let (live, _) = ctx.collect(false, false)?;
     let procs = live
         .processes
         .iter()

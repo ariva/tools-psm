@@ -58,6 +58,14 @@ pub fn lifetime_cpu(s: &Snapshot) -> HashMap<i64, f64> {
         .collect()
 }
 
+/// The `%CPU` a sampled snapshot carries per process (see `Ctx::sampled`).
+pub fn sampled_cpu(s: &Snapshot) -> HashMap<i64, f64> {
+    s.processes
+        .iter()
+        .filter_map(|p| Some((p.pid, p.cpu_percent?)))
+        .collect()
+}
+
 fn row(p: &Proc, cpu: &HashMap<i64, f64>) -> Row {
     Row {
         name: p.comm.clone(),

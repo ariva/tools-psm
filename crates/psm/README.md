@@ -55,7 +55,7 @@ Linux only. The Cargo package is `tool-psm`; the binary is `psm`.
 | `psm new [name] [description]` | New session and its baseline; the previous one becomes inactive |
 | `psm snap [label] [description]` | Another snapshot in the active session |
 | `psm` / `psm status` | Active session summary |
-| `psm diff [a] [b]` | Changes between two snapshots; default baseline -> now; `--brief` for one line |
+| `psm diff [a] [b]` | Changes between two snapshots: new, gone, restarted, memory, CPU; default baseline -> now; `--brief` for one line |
 | `psm report <kind>` | `memory`, `growth`, `processes`, `new`, `gone`, `cpu`, `meminfo`, `timeline`, `trend` |
 | `psm track -- <cmd>` / `--pid <pid>` / `[words]` | Follow a program while it runs: min/max/avg of memory, CPU, threads; `--times N` compares runs, `--save` keeps every sample as JSON ([guide](../../docs/psm/TRACK.md)) |
 | `psm procs show [ref]` | Processes of one stored snapshot (`list` is the live ones); same options |

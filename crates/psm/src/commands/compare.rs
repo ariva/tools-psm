@@ -12,7 +12,7 @@ use crate::analysis::group::Grouper;
 use crate::analysis::reports;
 use crate::cli::{DiffArgs, FilterArgs, ReportKind};
 use crate::model::{Filter, Metric, Proc, Snapshot, add};
-use crate::output::{Cell, Table, human, human_delta, out, print_json};
+use crate::output::{Cell, Table, human, human_delta, human_duration, out, print_json};
 use crate::store::{Db, Session};
 
 #[derive(Clone, Copy, PartialEq)]
@@ -28,6 +28,7 @@ enum Section {
         only_changed: bool,
     },
     Growth,
+    /// `%CPU` at each snapshot and the CPU time used in between.
     Cpu,
     Meminfo,
 }
@@ -41,6 +42,7 @@ pub fn diff(ctx: &Ctx, args: &DiffArgs) -> Result<()> {
         (args.gone, Section::Gone),
         (args.restarted, Section::Restarted),
         (args.memory, Section::Memory),
+        (args.cpu, Section::Cpu),
     ];
     let mut sections: Vec<Section> = picked
         .iter()
@@ -54,6 +56,7 @@ pub fn diff(ctx: &Ctx, args: &DiffArgs) -> Result<()> {
             Section::Gone,
             Section::Restarted,
             Section::Memory,
+            Section::Cpu,
             Section::Counts { only_changed: true },
             Section::Top,
         ];
@@ -94,6 +97,11 @@ fn brief(ctx: &Ctx, a: &Snapshot, b: &Snapshot, args: &DiffArgs) -> Result<()> {
             .as_ref()
             .map_or(name.to_string(), |g| g.display(name))
     };
+    // CPU time needs one boot; the names are already displayed.
+    let cpu = d
+        .same_boot
+        .then(|| reports::cpu_table(&d, grouper.as_ref()))
+        .transpose()?;
     if ctx.json {
         let side = |s: &Snapshot| json!({ "id": (!s.is_live()).then_some(s.id), "label": s.label });
         print_json(&json!({
@@ -112,9 +120,33 @@ fn brief(ctx: &Ctx, a: &Snapshot, b: &Snapshot, args: &DiffArgs) -> Result<()> {
             "top": rows.iter().map(|r| json!({
                 "name": display(&r.name), "pid": r.pid, "status": r.status, "delta": r.delta,
             })).collect::<Vec<_>>(),
+            "cpu": cpu.as_ref().map(|c| json!({
+                "seconds": c.seconds,
+                "wall_seconds": c.wall_seconds,
+                "top": c.rows.iter().take(s.top.unwrap_or(BRIEF_MOVERS)).map(|(name, secs)| json!({
+                    "name": name, "seconds": secs,
+                })).collect::<Vec<_>>(),
+            })),
         }));
         return Ok(());
     }
+    let burners = cpu.map_or(String::new(), |c| {
+        let top: Vec<String> = c
+            .rows
+            .iter()
+            .take(s.top.unwrap_or(BRIEF_MOVERS))
+            .map(|(name, secs)| format!("{name} {secs:.1}s"))
+            .collect();
+        format!(
+            "; cpu {:.1}s{}",
+            c.seconds,
+            if top.is_empty() {
+                String::new()
+            } else {
+                format!(": {}", top.join(", "))
+            }
+        )
+    });
     let movers = if rows.is_empty() {
         format!("no change above {}", human(s.min_delta))
     } else {
@@ -124,7 +156,7 @@ fn brief(ctx: &Ctx, a: &Snapshot, b: &Snapshot, args: &DiffArgs) -> Result<()> {
             .join(", ")
     };
     out(format!(
-        "{} -> {}: {} -> {} processes, new {}, gone {}, restarted {}, net {} ({}){}; top: {movers}",
+        "{} -> {}: {} -> {} processes, new {}, gone {}, restarted {}, net {} ({}){}; top: {movers}{burners}",
         a.title(),
         b.title(),
         d.before.len(),
@@ -388,16 +420,42 @@ fn compare(
 
     for sec in sections {
         match sec {
-            Section::Summary => text.push(format!(
-                "DIFF   {} -> {}\nProcesses: {} -> {}    new {}, gone {}, restarted {}",
-                a.title(),
-                b.title(),
-                d.before.len(),
-                d.after.len(),
-                d.count(Status::New),
-                d.count(Status::Gone),
-                d.count(Status::Restarted)
-            )),
+            Section::Summary => {
+                let mut lines = vec![
+                    format!("DIFF   {} -> {}", a.title(), b.title()),
+                    format!(
+                        "Processes: {} -> {}    new {}, gone {}, restarted {}",
+                        d.before.len(),
+                        d.after.len(),
+                        d.count(Status::New),
+                        d.count(Status::Gone),
+                        d.count(Status::Restarted)
+                    ),
+                ];
+                if d.same_boot {
+                    let c = reports::cpu_table(&d, grouper.as_ref())?;
+                    let top: Vec<String> = c
+                        .rows
+                        .iter()
+                        .take(BRIEF_MOVERS)
+                        .map(|(name, secs)| format!("{name} {secs:.1}s"))
+                        .collect();
+                    lines.push(format!(
+                        "CPU:       {:.1}s over {}{}{}",
+                        c.seconds,
+                        human_duration(c.wall_seconds),
+                        c.percent()
+                            .map(|p| format!(" ({p:.1} % of one core)"))
+                            .unwrap_or_default(),
+                        if top.is_empty() {
+                            String::new()
+                        } else {
+                            format!("    top: {}", top.join(", "))
+                        }
+                    ));
+                }
+                text.push(lines.join("\n"));
+            }
             Section::Top => {
                 // A long diff scrolls; the answer to "who moved memory" goes last.
                 let digest = DiffSettings {
@@ -495,13 +553,41 @@ fn compare(
                     growth_table(&rows, program.title()),
                 );
             }
-            Section::Cpu => section(
-                &mut text,
-                &mut doc,
-                format!("CPU TIME   {} -> {}", a.title(), b.title()),
-                "cpu",
-                reports::cpu_table(&d, program)?,
-            ),
+            Section::Cpu => {
+                let mut c =
+                    reports::cpu_table(&d, grouper.as_ref().or((!per_process).then_some(program)))?;
+                c.table.truncate(s.top);
+                let percent = c.percent().map(|p| (p * 10.0).round() / 10.0);
+                let table = &c.table;
+                doc.insert("cpu".into(), table.json());
+                doc.insert(
+                    "cpu_total".into(),
+                    json!({
+                        "seconds": c.seconds,
+                        "wall_seconds": c.wall_seconds,
+                        "percent": percent,
+                    }),
+                );
+                let note = match c.unsampled.as_slice() {
+                    [] => String::new(),
+                    sides => format!(
+                        "\nNo %CPU sample in {} (taken by an older psm, or with interval = \"0\"): take a new snapshot for BEFORE/AFTER",
+                        sides.join(" and ")
+                    ),
+                };
+                doc.insert("cpu_unsampled".into(), json!(c.unsampled));
+                text.push(format!(
+                    "CPU   {} -> {}   (%CPU at each snapshot, DELTA in points; USED = CPU seconds in between)\n{}\nTotal used: {:.1}s over {}{}{note}",
+                    a.title(),
+                    b.title(),
+                    table.render(),
+                    c.seconds,
+                    human_duration(c.wall_seconds),
+                    c.percent()
+                        .map(|p| format!(" ({p:.1} % of one core)"))
+                        .unwrap_or_default()
+                ));
+            }
             Section::Meminfo => section(
                 &mut text,
                 &mut doc,

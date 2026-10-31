@@ -279,7 +279,7 @@ impl Db {
             "SELECT pid, ppid, uid, username, comm, exe, cmdline, state, kthread, start_time,
                     rss_bytes, rss_anon_bytes, rss_file_bytes, rss_shmem_bytes, swap_bytes, vsz_bytes,
                     pss_bytes, uss_bytes, cpu_user, cpu_system, thread_count, nice,
-                    read_bytes, write_bytes, cgroup
+                    read_bytes, write_bytes, cgroup, cpu_percent
              FROM processes WHERE snapshot_id = ?1 ORDER BY pid",
         )?;
         snap.processes = stmt
@@ -310,6 +310,7 @@ impl Db {
                     read_bytes: r.get(22)?,
                     write_bytes: r.get(23)?,
                     cgroup: r.get(24)?,
+                    cpu_percent: r.get(25)?,
                 })
             })?
             .collect::<rusqlite::Result<_>>()?;
@@ -372,9 +373,9 @@ pub(super) fn insert_snapshot(
         "INSERT INTO processes (snapshot_id, pid, ppid, uid, username, comm, exe, cmdline, state,
             kthread, start_time, rss_bytes, rss_anon_bytes, rss_file_bytes, rss_shmem_bytes,
             swap_bytes, vsz_bytes, pss_bytes, uss_bytes, cpu_user, cpu_system, thread_count, nice,
-            read_bytes, write_bytes, cgroup)
+            read_bytes, write_bytes, cgroup, cpu_percent)
          VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18,
-            ?19, ?20, ?21, ?22, ?23, ?24, ?25, ?26)",
+            ?19, ?20, ?21, ?22, ?23, ?24, ?25, ?26, ?27)",
     )?;
     for p in &s.processes {
         stmt.execute(params![
@@ -403,7 +404,8 @@ pub(super) fn insert_snapshot(
             p.nice,
             p.read_bytes,
             p.write_bytes,
-            p.cgroup
+            p.cgroup,
+            p.cpu_percent
         ])?;
     }
     Ok(id)

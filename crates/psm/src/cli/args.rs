@@ -93,6 +93,9 @@ pub struct DiffArgs {
     /// Memory impact ranking only
     #[arg(long)]
     pub memory: bool,
+    /// CPU table only: %CPU at each snapshot and the time used in between
+    #[arg(long)]
+    pub cpu: bool,
     /// New processes only
     #[arg(long)]
     pub new: bool,

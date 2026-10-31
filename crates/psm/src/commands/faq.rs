@@ -144,7 +144,7 @@ const FAQ: &[(&str, &[(&str, &str)])] = &[
                 "psm diff --memory --metric anon",
             ),
             (
-                "Which program burned the most CPU since my last snapshot?",
+                "Which program burned the most CPU since my last snapshot, and what is busy now?",
                 "psm report cpu prev",
             ),
             ("How do I compare two specific snapshots?", "psm diff 0 2"),

@@ -8,7 +8,6 @@ use serde_json::{Value, json};
 
 use super::diff::{Diff, Status};
 use super::group::Grouper;
-use super::view::cpu_percent;
 use crate::model::{Filter, Metric, Proc, Snapshot, add};
 use crate::output::{Cell, Table, human, human_delta};
 use crate::store::{Db, Session};
@@ -147,36 +146,162 @@ pub fn meminfo_table(a: &Snapshot, b: &Snapshot) -> Table {
     t
 }
 
-/// CPU time used between two snapshots, per group.
-pub fn cpu_table(d: &Diff, g: &Grouper) -> Result<Table> {
+/// The CPU table of a diff, plus the total used and every row's
+/// `(name, seconds used)` largest first for the summary and `--brief`.
+pub struct CpuTime {
+    pub table: Table,
+    pub seconds: f64,
+    pub wall_seconds: f64,
+    pub rows: Vec<(String, f64)>,
+    /// Sides without a `%CPU` sample (taken by an older psm or with
+    /// `interval = "0"`): BEFORE or AFTER is `-` there and DELTA unknown.
+    pub unsampled: Vec<String>,
+}
+
+impl CpuTime {
+    /// Share of one core over the interval.
+    pub fn percent(&self) -> Option<f64> {
+        (self.wall_seconds > 0.0).then(|| self.seconds / self.wall_seconds * 100.0)
+    }
+}
+
+/// CPU between two snapshots, per process (`None`) or per group. BEFORE and
+/// AFTER are the `%CPU` sampled at each snapshot (`-` when that side was not
+/// sampled or the process was not there), DELTA their difference in points
+/// (a new process counts from 0, a gone one to 0, as the memory impact does),
+/// USED the CPU seconds consumed in between: a running process its counter
+/// delta, a new or restarted one the new instance's whole life (it began
+/// after the first snapshot), a gone one unknown (its final counters went
+/// with it). Rows idle on both sides that used nothing are left out; the
+/// largest change in points comes first, then the most used.
+pub fn cpu_table(d: &Diff, g: Option<&Grouper>) -> Result<CpuTime> {
     if !d.same_boot {
-        bail!("CPU time cannot be compared across a reboot");
+        bail!("CPU cannot be compared across a reboot");
     }
+    #[derive(Default)]
+    struct Row {
+        name: String,
+        pid: Option<i64>,
+        status: &'static str,
+        before: Option<f64>,
+        after: Option<f64>,
+        used: Option<i64>,
+    }
+    // A missing side is 0 when the process was not there, unknown when that
+    // snapshot was not sampled at all.
+    let sampled = |s: &Snapshot| s.processes.iter().any(|p| p.cpu_percent.is_some());
+    let (a_sampled, b_sampled) = (sampled(d.a), sampled(d.b));
+    let delta = |r: &Row| -> Option<f64> {
+        let before = r.before.or(a_sampled.then_some(0.0))?;
+        let after = r.after.or(b_sampled.then_some(0.0))?;
+        Some(after - before)
+    };
+    let addf = |a: Option<f64>, b: Option<f64>| match (a, b) {
+        (Some(x), Some(y)) => Some(x + y),
+        (x, None) => x,
+        (None, y) => y,
+    };
     let wall = d.b.uptime_seconds - d.a.uptime_seconds;
-    let mut ticks: BTreeMap<String, i64> = BTreeMap::new();
-    for c in &d.changes {
-        // A gone process took its final counters with it; only what is still visible counts.
-        let Some(after) = c.after else { continue };
-        let before = c.before.filter(|_| c.status == Status::Running);
-        let used =
-            after.cpu_user + after.cpu_system - before.map_or(0, |p| p.cpu_user + p.cpu_system);
-        *ticks.entry(g.key(after)).or_default() += used;
-    }
-    let mut rows: Vec<(String, i64)> = ticks.into_iter().filter(|(_, t)| *t > 0).collect();
-    rows.sort_by(|x, y| y.1.cmp(&x.1).then_with(|| x.0.cmp(&y.0)));
-    let mut t = Table::new(&[
-        (g.title(), "name"),
-        ("CPU SEC", "cpu_seconds"),
-        ("%CPU", "cpu_percent"),
-    ]);
-    for (key, used) in rows {
-        t.rows.push(vec![
-            Cell::Text(g.display(&key)),
-            Cell::Pct(Some(used as f64 / d.b.clk_tck as f64)),
-            Cell::Pct(cpu_percent(used, wall, d.b.clk_tck)),
+    let clk_tck = d.b.clk_tck.max(1);
+    let secs = |ticks: i64| ticks as f64 / clk_tck as f64;
+    let mut rows: Vec<Row> = match g {
+        None => d
+            .changes
+            .iter()
+            .filter_map(|c| {
+                let p = c.after.or(c.before)?;
+                Some(Row {
+                    name: p.comm.clone(),
+                    pid: Some(p.pid),
+                    status: c.status.label(),
+                    before: c.before.and_then(|p| p.cpu_percent),
+                    after: c.after.and_then(|p| p.cpu_percent),
+                    used: c.cpu_ticks().map(|(b, a)| a - b.unwrap_or(0)),
+                })
+            })
+            .collect(),
+        Some(g) => {
+            let mut groups: BTreeMap<String, Row> = BTreeMap::new();
+            for c in &d.changes {
+                let Some(p) = c.after.or(c.before) else {
+                    continue;
+                };
+                let e = groups.entry(g.key(p)).or_default();
+                e.before = addf(e.before, c.before.and_then(|p| p.cpu_percent));
+                e.after = addf(e.after, c.after.and_then(|p| p.cpu_percent));
+                e.used = add(e.used, c.cpu_ticks().map(|(b, a)| a - b.unwrap_or(0)));
+            }
+            groups
+                .into_iter()
+                .map(|(key, mut r)| {
+                    r.name = g.display(&key);
+                    r
+                })
+                .collect()
+        }
+    };
+    rows.retain(|r| {
+        r.before.unwrap_or(0.0).max(r.after.unwrap_or(0.0)) >= 0.05 || r.used.unwrap_or(0) > 0
+    });
+    rows.sort_by(|x, y| {
+        delta(y)
+            .map_or(0.0, f64::abs)
+            .total_cmp(&delta(x).map_or(0.0, f64::abs))
+            .then_with(|| y.used.cmp(&x.used))
+            .then_with(|| x.name.cmp(&y.name))
+            .then(x.pid.cmp(&y.pid))
+    });
+    let seconds = secs(rows.iter().filter_map(|r| r.used).sum());
+    let mut t = match g {
+        None => Table::new(&[
+            ("PROCESS", "process"),
+            ("PID", "pid"),
+            ("STATUS", "status"),
+            ("BEFORE", "before"),
+            ("AFTER", "after"),
+            ("DELTA", "delta"),
+            ("USED", "cpu_seconds"),
+        ]),
+        Some(g) => Table::new(&[
+            (g.title(), "name"),
+            ("BEFORE", "before"),
+            ("AFTER", "after"),
+            ("DELTA", "delta"),
+            ("USED", "cpu_seconds"),
+        ]),
+    };
+    let pct = |v: Option<f64>| v.map_or(Cell::Dash, |x| Cell::Pct(Some(x)));
+    for r in &rows {
+        let mut cells = vec![Cell::text(&r.name)];
+        if g.is_none() {
+            cells.push(Cell::Int(r.pid));
+            cells.push(Cell::text(r.status));
+        }
+        cells.extend([
+            pct(r.before),
+            pct(r.after),
+            Cell::PctDelta(delta(r)),
+            r.used.map_or(Cell::Dash, |u| Cell::Pct(Some(secs(u)))),
         ]);
+        t.rows.push(cells);
     }
-    Ok(t)
+    let mut used: Vec<(String, f64)> = rows
+        .iter()
+        .filter_map(|r| Some((r.name.clone(), secs(r.used?))))
+        .filter(|(_, s)| *s > 0.0)
+        .collect();
+    used.sort_by(|x, y| y.1.total_cmp(&x.1).then_with(|| x.0.cmp(&y.0)));
+    Ok(CpuTime {
+        table: t,
+        seconds,
+        wall_seconds: wall,
+        rows: used,
+        unsampled: [(a_sampled, d.a), (b_sampled, d.b)]
+            .into_iter()
+            .filter(|(sampled, _)| !sampled)
+            .map(|(_, s)| s.title())
+            .collect(),
+    })
 }
 
 /// One row per snapshot of the session; with a filter, also what it matched.

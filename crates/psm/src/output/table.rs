@@ -11,6 +11,8 @@ pub enum Cell {
     IntDelta(i64),
     /// Missing is printed empty (no second CPU reading), not as n/a.
     Pct(Option<f64>),
+    /// A change in percentage points, signed.
+    PctDelta(Option<f64>),
     Bytes(Option<i64>),
     Delta(Option<i64>),
     /// Not applicable, e.g. BEFORE of a new process.
@@ -30,6 +32,8 @@ impl Cell {
             Cell::IntDelta(n) => n.to_string(),
             Cell::Pct(Some(x)) => format!("{x:.1}"),
             Cell::Pct(None) => String::new(),
+            Cell::PctDelta(Some(x)) => format!("{x:+.1}"),
+            Cell::PctDelta(None) => "-".into(),
             Cell::Bytes(Some(b)) => human(*b),
             Cell::Delta(Some(b)) => human_delta(*b),
             Cell::Int(None) | Cell::Bytes(None) | Cell::Delta(None) => "n/a".into(),
@@ -43,7 +47,7 @@ impl Cell {
             Cell::Text(s) => json!(s),
             Cell::Int(v) | Cell::Bytes(v) | Cell::Delta(v) => json!(v),
             Cell::IntDelta(n) => json!(n),
-            Cell::Pct(v) => json!(v.map(|x| (x * 10.0).round() / 10.0)),
+            Cell::Pct(v) | Cell::PctDelta(v) => json!(v.map(|x| (x * 10.0).round() / 10.0)),
             Cell::Dash => Value::Null,
         }
     }

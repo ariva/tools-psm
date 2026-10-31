@@ -55,15 +55,18 @@ fn database_is_private_versioned_and_kept() {
     assert_eq!(orphans, 0);
 
     // An older schema is refused until `psm update` migrates it in place, keeping a copy.
-    conn.execute_batch("ALTER TABLE snapshots DROP COLUMN description; PRAGMA user_version = 2;")
-        .unwrap();
+    conn.execute_batch(
+        "ALTER TABLE processes DROP COLUMN cpu_percent;
+         ALTER TABLE snapshots DROP COLUMN description; PRAGMA user_version = 2;",
+    )
+    .unwrap();
     assert!(
         e.fails("after", &["sessions"])
-            .contains("older psm (schema 2, this one uses 3)")
+            .contains("older psm (schema 2, this one uses 4)")
     );
     let o = e.ok("after", &["update"]);
     assert!(
-        o.contains("schema 2 -> 3") && o.contains("1 session(s)"),
+        o.contains("schema 2 -> 4") && o.contains("1 session(s)"),
         "{o}"
     );
     let copy = e.db.with_extension("db.v2.bak");
@@ -83,7 +86,7 @@ fn database_is_private_versioned_and_kept() {
     drop(conn);
     assert!(
         e.fails("after", &["sessions"])
-            .contains("newer psm (schema 99, this one uses 3)")
+            .contains("newer psm (schema 99, this one uses 4)")
     );
     assert!(e.fails("after", &["update"]).contains("newer psm"));
 

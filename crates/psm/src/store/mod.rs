@@ -19,6 +19,7 @@ const MIGRATIONS: &[(i64, &str)] = &[
     (1, include_str!("migrations/0001_initial.sql")),
     (2, include_str!("migrations/0002_seq.sql")),
     (3, include_str!("migrations/0003_description.sql")),
+    (4, include_str!("migrations/0004_cpu_percent.sql")),
 ];
 pub const SCHEMA_VERSION: i64 = MIGRATIONS[MIGRATIONS.len() - 1].0;
 pub(crate) const NOW: &str = "strftime('%Y-%m-%dT%H:%M:%SZ','now')";

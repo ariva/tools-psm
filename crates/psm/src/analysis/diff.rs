@@ -15,7 +15,7 @@ pub enum Status {
 }
 
 impl Status {
-    fn label(self) -> &'static str {
+    pub fn label(self) -> &'static str {
         match self {
             Status::Running => "running",
             Status::Restarted => "restarted",
@@ -29,6 +29,22 @@ pub struct Change<'a> {
     pub status: Status,
     pub before: Option<&'a Proc>,
     pub after: Option<&'a Proc>,
+}
+
+impl Change<'_> {
+    /// Cumulative CPU ticks `(before, after)` of the instance still present:
+    /// a running process its counters at each snapshot, a new or restarted
+    /// one `None` and the new instance's counters (its whole life, it started
+    /// after the first snapshot), a gone one nothing (it took its final
+    /// counters with it). `after - before.unwrap_or(0)` is what was used.
+    pub fn cpu_ticks(&self) -> Option<(Option<i64>, i64)> {
+        let after = self.after?;
+        let before = match (self.status, self.before) {
+            (Status::Running, Some(b)) => Some(b.cpu_user + b.cpu_system),
+            _ => None,
+        };
+        Some((before, after.cpu_user + after.cpu_system))
+    }
 }
 
 pub struct Diff<'a> {

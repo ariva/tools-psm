@@ -137,7 +137,7 @@ deep = false       # also collect PSS/USS on every snapshot (slower)
 [display]
 units = "auto"     # auto, B, KiB, MiB, GiB
 kernel = false     # show kernel threads
-interval = "500ms" # CPU sampling window of `list` and `info`
+interval = "500ms" # CPU sampling window of `list`, `info` and every snapshot (0: no %CPU stored)
 json_options = "full"  # what --json records about the run: full, safe (no descriptions, no paths), none
 # top = 30         # limit every table to this many rows
 # group = "name"   # name, app, exe, cmdline, user, cgroup, parent

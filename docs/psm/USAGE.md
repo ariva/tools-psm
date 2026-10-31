@@ -104,6 +104,7 @@ psm diff prev                 # what changed since that snapshot
 ```text
 DIFF   #0 baseline -> now
 Processes: 5 -> 5    new 2, gone 2, restarted 1
+CPU:       9.6s over 1h (0.3 % of one core)    top: code 6.0s, node 3.6s
 
 NEW PROCESSES
 #  PID  PPID     RSS  PROCESS
@@ -129,12 +130,18 @@ MEMORY IMPACT   #0 baseline -> now   (RSS + swap)
 6  alpha          400  gone          5 MiB         -    -5 MiB
 Net process change: -36 MiB
 
+CPU   #0 baseline -> now   (%CPU at each snapshot, DELTA in points; USED = CPU seconds in between)
+#  PROCESS  PID  STATUS   BEFORE  AFTER  DELTA  USED
+1  code     100  running     0.0    0.0   +0.0   6.0
+2  node     600  new           -    0.0   +0.0   3.6
+Total used: 9.6s over 1h (0.3 % of one core)
+
 PROCESS COUNTS
-PROGRAM     BEFORE  AFTER  DELTA
-beta             0      1     +1
-node             0      1     +1
-alpha            1      0     -1
-old-helper       1      0     -1
+#  PROGRAM     BEFORE  AFTER  DELTA
+1  beta             0      1     +1
+2  node             0      1     +1
+3  alpha            1      0     -1
+4  old-helper       1      0     -1
 
 TOP 5 MEMORY IMPACT   #0 baseline -> now
 
@@ -147,12 +154,12 @@ By process   (RSS + swap)
 5  beta           400  new               -     7 MiB    +7 MiB
 
 By program   (RSS + swap)
-PROGRAM        #BEFORE  #AFTER    BEFORE     AFTER     DELTA
-rust-analyzer        1       1   812 MiB   344 MiB  -468 MiB
-code                 1       1  1000 MiB  1.37 GiB  +400 MiB
-node                 0       1         -    72 MiB   +72 MiB
-old-helper           1       0    42 MiB         -   -42 MiB
-beta                 0       1         -     7 MiB    +7 MiB
+#  PROGRAM        #BEFORE  #AFTER    BEFORE     AFTER     DELTA
+1  rust-analyzer        1       1   812 MiB   344 MiB  -468 MiB
+2  code                 1       1  1000 MiB  1.37 GiB  +400 MiB
+3  node                 0       1         -    72 MiB   +72 MiB
+4  old-helper           1       0    42 MiB         -   -42 MiB
+5  beta                 0       1         -     7 MiB    +7 MiB
 
 Net process change: -36 MiB    System memory used: 4.56 GiB -> 5.51 GiB (+977 MiB)
 ```
@@ -165,6 +172,9 @@ ones as new, and they cancel out only when summed per program.
 
 PID 400 appears as both gone and new: the PID was reused by a different
 program, and `psm` tells instances apart by PID plus start time.
+
+The `%CPU` columns are 0 here because the fixture's counters never
+move; see [CPU](#cpu) for a live one.
 
 ## Live views
 
@@ -235,7 +245,7 @@ Chain:    1 systemd > 100 code > 600 node   app: code
 Cgroup:   /user.slice/app-code.scope
 Age:      1h 2m   (as of now)
 Memory:   RSS 72 MiB (anon 60 MiB, file 12 MiB, shmem 0 B)   swap 0 B   VSZ 288 MiB
-CPU:      3s total (3s user, 0s system)   0.1 % of one core over its life   (psm procs shows the last 500ms)
+CPU:      3s total (3s user, 0s system)   0.1 % of one core over its life   0.1 % at the snapshot
 I/O:      read 2 MiB   written 5 MiB
 
 In session chrome-154:
@@ -250,7 +260,9 @@ process has consumed so far (what `ps -o time` shows), split into its
 own code and the kernel working for it, and then that total as an
 average rate over its life; the live `%CPU` of `psm procs` is the last
 500 ms instead. `--json` has `total_seconds`, `user_seconds`,
-`system_seconds` and `lifetime_percent`. A `--deep` snapshot adds a
+`system_seconds`, `lifetime_percent` and `snapshot_percent` (the
+`%CPU` sampled when the snapshot was taken, see [CPU](#cpu)). A
+`--deep` snapshot adds a
 `PSS`/`USS` line. `--json` gives the same fields and the history
 as an array; `--watch` repeats the live card. A pid that is not in the
 chosen snapshot is an error; `psm pid <pid> latest` looks in the last
@@ -343,9 +355,10 @@ update"`, changed with `psm sessions rename`. Both show in the lists
 With no target, the target is `now`.
 
 Without section flags you get everything: summary, new, gone,
-restarted, memory impact, the programs whose process count changed, and
-a closing top-5 digest. `--new`, `--gone`, `--restarted` and `--memory`
-pick sections; a single section has no digest.
+restarted, memory impact, CPU, the programs whose process count
+changed, and a closing top-5 digest.
+`--new`, `--gone`, `--restarted`, `--memory` and `--cpu` pick sections;
+a single section has no digest.
 
 `--brief` is the whole diff on one line, for a CI log, a commit message
 or a chat; the section flags are ignored with it:
@@ -355,14 +368,16 @@ psm diff --brief
 ```
 
 ```text
-#0 baseline -> now: 263 -> 265 processes, new 3, gone 1, restarted 0, net +512 MiB (RSS + swap); top: code +400 MiB, chrome -120 MiB, node +72 MiB
+#0 baseline -> now: 263 -> 265 processes, new 3, gone 1, restarted 0, net +512 MiB (RSS + swap); top: code +400 MiB, chrome -120 MiB, node +72 MiB; cpu 91.4s: code 60.2s, chrome 22.1s, node 4.5s
 ```
 
 The movers are the largest absolute changes above `--min-delta`, three
 of them unless `--top` says otherwise; `--group`, `--metric` and the
-filters apply. With `--json` it is one small object (`from`, `to`,
-`processes`, `metric`, `net_change`, `top`). Across a reboot the line
-says `different boots: programs compared`.
+filters apply. `cpu` is the CPU time used in between, total and the
+same number of largest users. With `--json` it is one small object
+(`from`, `to`, `processes`, `metric`, `net_change`, `top`, `cpu`).
+Across a reboot the line says `different boots: programs compared` and
+has no `cpu` part.
 
 ### Memory impact
 
@@ -400,6 +415,49 @@ The header always names the metric that was used.
 When the two snapshots come from different boots, every process is new
 by definition. `psm` says so and compares programs instead of instances.
 
+### CPU
+
+One table, in the full diff and as `psm report cpu`, filtered, grouped
+and cut like the rest:
+
+```text
+CPU   #0 baseline -> #1 after-build   (%CPU at each snapshot, DELTA in points; USED = CPU seconds in between)
+#  PROCESS        PID  STATUS      BEFORE  AFTER  DELTA   USED
+1  rust-analyzer  310  restarted        -   45.3  +45.3   44.0
+2  chrome         300  running       30.0    2.1  -27.9    3.1
+3  code           100  running        1.2   12.8  +11.6   91.4
+4  node           600  new              -    5.8   +5.8   12.5
+5  old-helper     200  gone           0.7      -   -0.7      -
+Total used: 147.9s over 12m 30s (19.7 % of one core)
+```
+
+- **BEFORE, AFTER**: the `%CPU` of the process at each snapshot. 100
+  is one fully used core. `new` and `snap` measure it the way `psm
+  procs` does: read the counters, wait `interval` (500 ms by default,
+  `[display]` in the config), read again, and store the result with
+  every process. `-` means the process was not there, or that snapshot
+  was taken by an older psm or with `interval = "0"`.
+- **DELTA**: AFTER minus BEFORE, in percentage points. A new process
+  counts from 0 and a gone one to 0, as in the memory impact. When a
+  whole snapshot has no sample, DELTA is `-` (unknown, not a change
+  from 0), the rows sort by USED, and a line under the table names
+  that snapshot: take a new one. Largest change first.
+- **USED**: the CPU seconds the process consumed between the two
+  snapshots, from the cumulative counters every snapshot stores (what
+  `ps -o time` shows). A running process counts the difference, a new
+  or restarted one the whole life of its new instance (it began after
+  the first snapshot); a gone process shows `-`, it took its final
+  counters with it. The closing line sums it and gives the average
+  share of one core over the interval; a short burst in a long
+  interval reads small there, `psm track` is for peaks.
+
+Rows idle at both snapshots that used nothing in between are left out.
+`psm diff --cpu` is this table alone; the summary line of the diff and
+`--brief` carry the total used and the largest users. Across a reboot
+there is no CPU table. `psm procs show <ref>` and the `%CPU` column of
+`psm pid` use the same stored sample. `--json` rows have `before`,
+`after`, `delta` and `cpu_seconds`.
+
 ## Reports
 
 ```bash
@@ -414,7 +472,7 @@ References and defaults are the same as for `diff`.
 | `growth` | programs that grew, with the relative change |
 | `processes` | process count per program, changed or not |
 | `new`, `gone` | those sections only |
-| `cpu` | CPU seconds used between the two snapshots, per program |
+| `cpu` | `%CPU` at each snapshot and the CPU time used in between, per process (per group with `--group`); see [CPU](#cpu) |
 | `meminfo` | every `/proc/meminfo` field that changed |
 | `timeline` | one row per snapshot of the session |
 | `trend` | every program across all snapshots of the session plus `now`: growing, shrinking, noisy or flat |
@@ -445,8 +503,7 @@ psm report timeline --name code
 2   1  after-upgrade  2026-09-30 09:12:31      1  5.51 GiB  10 MiB          1.37 GiB
 ```
 
-`report cpu` counts processes still present in the second snapshot; a
-process that exited took its final counters with it.
+`report cpu` is the CPU table of `psm diff` on its own; see [CPU](#cpu).
 
 ## Tracking a program
 
@@ -571,8 +628,8 @@ psm procs --name MainThread --group exe
 ```
 
 ```text
-PROGRAM        COUNT  %CPU  %MEM       RSS  THR
-/usr/bin/node     26   1.2   3.2  4.05 GiB  270
+#  PROGRAM        COUNT  %CPU  %MEM       RSS  THR
+1  /usr/bin/node     26   1.2   3.2  4.05 GiB  270
 ```
 
 It is Node.js, which names its main thread `MainThread`. Who started
@@ -613,11 +670,11 @@ psm procs --name MainThread --group cmdline --top 4
 ```
 
 ```text
-PROGRAM                                     COUNT  %CPU  %MEM       RSS  THR
-node /opt/lsp/typescript/tsserver.js            4   0.3   1.2  1.49 GiB   36
-node node_modules/.bin/vite build --watch       1   0.1   0.4   563 MiB   47
-node /opt/lsp/typescript/server.js --stdio      2   0.2   0.3   412 MiB   28
-node /opt/lsp/json/server.js --stdio            3   0.0   0.2   268 MiB   21
+#  PROGRAM                                     COUNT  %CPU  %MEM       RSS  THR
+1  node /opt/lsp/typescript/tsserver.js            4   0.3   1.2  1.49 GiB   36
+2  node node_modules/.bin/vite build --watch       1   0.1   0.4   563 MiB   47
+3  node /opt/lsp/typescript/server.js --stdio      2   0.2   0.3   412 MiB   28
+4  node /opt/lsp/json/server.js --stdio            3   0.0   0.2   268 MiB   21
 ```
 
 `--group name` is a poor key for interpreters: every Node program is
@@ -670,9 +727,9 @@ psm report processes --name chrome
 
 ```text
 PROCESS COUNTS
-PROGRAM          BEFORE  AFTER  DELTA
-chrome               40     47     +7
-chrome_crashpad       2      2      0
+#  PROGRAM          BEFORE  AFTER  DELTA
+1  chrome               40     47     +7
+2  chrome_crashpad       2      2      0
 ```
 
 ### Is it still growing?
@@ -685,11 +742,11 @@ psm report trend
 
 ```text
 TREND   session chrome-154: 5 snapshots + now over 2.3 h   (RSS + swap)
-PROGRAM          FIRST      LAST     DELTA  UP    SLOPE/H  VERDICT
-chrome        3.42 GiB  3.91 GiB  +500 MiB  5/5  +210 MiB  growing
-code          1.91 GiB  2.01 GiB  +100 MiB  3/5   +38 MiB  noisy
-rust-analyzer  812 MiB   640 MiB  -172 MiB  1/5   -70 MiB  shrinking
-node            72 MiB    73 MiB    +1 MiB  2/5      0 B   flat
+#  PROGRAM          FIRST      LAST     DELTA  UP    SLOPE/H  VERDICT
+1  chrome        3.42 GiB  3.91 GiB  +500 MiB  5/5  +210 MiB  growing
+2  code          1.91 GiB  2.01 GiB  +100 MiB  3/5   +38 MiB  noisy
+3  rust-analyzer  812 MiB   640 MiB  -172 MiB  1/5   -70 MiB  shrinking
+4  node            72 MiB    73 MiB    +1 MiB  2/5      0 B   flat
 ```
 
 One row per program (`--group` for another key), over every snapshot
@@ -739,8 +796,8 @@ Swap            0 B       0 B       0 B
 Threads         412       438       +26
 
 BY PROGRAM   (RSS + swap)
-PROGRAM  #BEFORE  #AFTER    BEFORE     AFTER     DELTA
-chrome        26      29  3.41 GiB  3.80 GiB  +399 MiB
+#  PROGRAM  #BEFORE  #AFTER    BEFORE     AFTER     DELTA
+1  chrome        26      29  3.41 GiB  3.80 GiB  +399 MiB
 ```
 
 ### Narrowing further
@@ -1081,8 +1138,11 @@ Durations (`--interval`, `--watch`, `--older-than`) accept `500ms`, `10s`, `5m`,
 
 **`%CPU`**: 100 is one fully used core, so a multi-threaded process or
 a group can exceed 100. `list` and `info` take two readings
-`--interval` apart. A process that started inside that window has an
-empty `%CPU`. With `--interval 0`, and in `show`, the figure is the
+`--interval` apart; `new` and `snap` do the same over the configured
+`interval` and store the result with every process, so `show` and
+`diff` report the `%CPU` of that moment. A process that started inside
+the window has an empty `%CPU`. With `--interval 0` (or `interval = "0"`
+in the config, which also makes `snap` instant) the figure is the
 lifetime average (CPU time divided by process age), like `ps`.
 
 **`%MEM`** is RSS divided by total memory.
@@ -1286,7 +1346,7 @@ units = "auto"        # auto, B, KiB, MiB, GiB
 top = 30              #                              (--top)
 group = "name"        #                              (--group; "pid" = none)
 kernel = false        #                              (--kernel)
-interval = "500ms"    #                              (--interval)
+interval = "500ms"    # also the window `new`/`snap` sample %CPU over (--interval)
 json_options = "full" # full, safe, none             (--json=LEVEL)
 
 [diff]

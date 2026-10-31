@@ -30,7 +30,7 @@ pub enum ReportKind {
     Gone,
     /// Programs that grew, with the relative change
     Growth,
-    /// CPU seconds used between the two snapshots, per program
+    /// %CPU at each snapshot and the CPU time used in between, per process (per group with --group)
     Cpu,
     /// One row per snapshot of the session
     Timeline,
@@ -162,6 +162,7 @@ Examples:
   psm diff 0 2                 two stored snapshots (#0 is the baseline)
   psm diff --group name        the whole diff per program
   psm diff --memory --top 10   memory ranking only
+  psm diff --cpu               CPU table only
 
 {REFERENCES}"))]
     #[command(short_flag = 'd')]

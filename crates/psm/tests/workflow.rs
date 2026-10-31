@@ -47,6 +47,24 @@ fn before_after_workflow() {
     assert_eq!(column(rows(&d, "gone"), "pid"), [200, 400]);
     assert_eq!(rows(&d, "restarted")[0]["old_pid"], 300);
     assert_eq!(rows(&d, "restarted")[0]["new_pid"], 310);
+    // The full diff carries CPU time and the %CPU sampled at each snapshot.
+    assert_eq!(d["cpu_total"]["seconds"], 9.6);
+    assert_eq!(rows(&d, "cpu")[0]["process"], "code");
+    assert!(e.ok("after", &["diff", "--cpu"]).starts_with(
+        "CPU   #0 baseline -> now   (%CPU at each snapshot, DELTA in points; USED = CPU seconds in between)\n"
+    ));
+    let text = e.ok("after", &["diff"]);
+    assert!(
+        text.contains(
+            "\nCPU:       9.6s over 1h (0.3 % of one core)    top: code 6.0s, node 3.6s\n"
+        ),
+        "{text}"
+    );
+    // The stored sample (0 here) is what `show` reports, not the lifetime average.
+    assert_eq!(
+        e.json("after", &["procs", "show", "latest", "--json"])[0]["cpu_percent"],
+        0.0
+    );
 
     // A full diff closes with a digest: the five largest movers, by process and by program.
     let top = &d["top"];

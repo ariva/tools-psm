@@ -91,21 +91,58 @@ impl Ctx {
     }
 
     pub fn collect(&self, deep: bool, cmdline: bool) -> Result<(Snapshot, usize)> {
-        collector::collect(&collector::Options {
-            root: self.proc_root.clone(),
-            deep,
-            cmdline,
-            io: self.cfg.collection.io,
-            cgroups: self.cfg.collection.cgroups,
-        })
+        self.collect_after(deep, cmdline, None)
+    }
+
+    fn collect_after(
+        &self,
+        deep: bool,
+        cmdline: bool,
+        first: Option<&collector::Ticks>,
+    ) -> Result<(Snapshot, usize)> {
+        collector::collect(
+            &collector::Options {
+                root: self.proc_root.clone(),
+                deep,
+                cmdline,
+                io: self.cfg.collection.io,
+                cgroups: self.cfg.collection.cgroups,
+            },
+            first,
+        )
     }
 
     pub fn capture(&self, c: &CaptureArgs) -> Result<Snapshot> {
         let deep = c.deep.unwrap_or(self.cfg.collection.deep);
-        let (snapshot, restricted) =
-            self.collect(deep, self.cfg.collection.cmdline && !c.no_cmdline)?;
+        let (snapshot, restricted) = self.sampled(
+            deep,
+            self.cfg.collection.cmdline && !c.no_cmdline,
+            self.interval(&None)?,
+        )?;
         note_restricted(restricted, &snapshot);
         Ok(snapshot)
+    }
+
+    /// The CPU sampling window: the flag, else `display.interval`.
+    pub fn interval(&self, flag: &Option<String>) -> Result<Duration> {
+        parse_duration(flag.as_deref().unwrap_or(&self.cfg.display.interval))
+    }
+
+    /// A snapshot with `cpu_percent` per process: the tick counters are read,
+    /// the window passes, then the snapshot is collected. A zero window skips
+    /// the sampling (and the wait), leaving `cpu_percent` unset.
+    pub fn sampled(
+        &self,
+        deep: bool,
+        cmdline: bool,
+        window: Duration,
+    ) -> Result<(Snapshot, usize)> {
+        if window.is_zero() {
+            return self.collect(deep, cmdline);
+        }
+        let first = collector::cpu_ticks(&self.proc_root)?;
+        std::thread::sleep(window);
+        self.collect_after(deep, cmdline, Some(&first))
     }
 
     /// Current processes plus `%CPU` per pid. A percentage needs two readings
@@ -115,31 +152,13 @@ impl Ctx {
         deep: bool,
         interval: &Option<String>,
     ) -> Result<(Snapshot, HashMap<i64, f64>, usize)> {
-        let interval = parse_duration(interval.as_deref().unwrap_or(&self.cfg.display.interval))?;
-        if interval.is_zero() {
-            let (snapshot, restricted) = self.collect(deep, true)?;
-            let cpu = view::lifetime_cpu(&snapshot);
-            return Ok((snapshot, cpu, restricted));
-        }
-        let started = Instant::now();
-        let first = collector::cpu_ticks(&self.proc_root)?;
-        std::thread::sleep(interval);
-        let elapsed = started.elapsed().as_secs_f64();
-        let (snapshot, restricted) = self.collect(deep, true)?;
-        // Processes that started inside the window have no first reading: no %CPU.
-        let cpu = snapshot
-            .processes
-            .iter()
-            .filter_map(|p| {
-                let before = first.get(&(p.pid, p.start_time))?;
-                let pct = view::cpu_percent(
-                    p.cpu_user + p.cpu_system - before,
-                    elapsed,
-                    snapshot.clk_tck,
-                )?;
-                Some((p.pid, pct))
-            })
-            .collect();
+        let window = self.interval(interval)?;
+        let (snapshot, restricted) = self.sampled(deep, true, window)?;
+        let cpu = if window.is_zero() {
+            view::lifetime_cpu(&snapshot)
+        } else {
+            view::sampled_cpu(&snapshot)
+        };
         Ok((snapshot, cpu, restricted))
     }
 

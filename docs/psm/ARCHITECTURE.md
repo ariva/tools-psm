@@ -63,7 +63,7 @@ Nothing below `commands` knows about clap.
 | `build.rs` | Stamps the short commit hash (`-dirty` when the tree has changes) and the build date into the binary for `psm version`; "unknown" when git or date is missing. Asks git for the repository directory, since the crate is not at the repository root. |
 | `cli/commands.rs` | `Cmd`, `SessionCmd`, `ReportKind`, `ExportFormat`, help texts and examples. |
 | `commands/` | One handler file per command group. |
-| `commands/mod.rs` | `Ctx` (flags + environment + config merged), `run()`, the dispatch, and the `--watch` loop around it. |
+| `commands/mod.rs` | `Ctx` (flags + environment + config merged), `sampled` (the two-reading collection behind every snapshot and live view), `run()`, the dispatch, and the `--watch` loop around it. |
 | `commands/views.rs` | `procs` (`list`, the default, and `show`), `pid` (one process, with its session history), `info`. |
 | `commands/capture.rs` | `new`, `snap`, and the never-stored live snapshot behind `now`. |
 | `commands/compare.rs` | `diff`, `report`, `compare`: reference resolution, diff settings, sections, the closing digest, the `--brief` line. |
@@ -81,7 +81,7 @@ Nothing below `commands` knows about clap.
 | `analysis/group.rs` | `Grouper`: the group keys, application roots, the launcher list. |
 | `analysis/diff.rs` | Classifies processes between two snapshots and builds the comparison tables. |
 | `analysis/view.rs` | The table of one snapshot: filter, group, sort, cut; `%CPU` formulas. |
-| `analysis/reports.rs` | System header, `status`, and the meminfo, cpu, timeline and trend reports. |
+| `analysis/reports.rs` | System header, `status`, and the meminfo, CPU, timeline and trend reports. |
 | `analysis/track.rs` | `Target` (a pid tree, or a filter rolled up by group), one `Sample` of it and the machine, `Stats` over a run with the warmup cut, `Final` over several runs. |
 | `output/mod.rs` | `out` (pipe-safe printing); `print_json`, `json_document` and the envelope every JSON document gets (`psm`, `command`, `options`, `started`, `elapsed_ms`, `data`); `build_info`; the UTC timestamp without a time crate. |
 | `output/table.rs` | `Table` and `Cell`: one definition rendered as text, JSON or CSV. |
@@ -125,6 +125,16 @@ world-readable. `exe`, `io` and `smaps_rollup` need access to the
 process and are read only when allowed. `smaps_rollup` is read only
 with `--deep`.
 
+**`%CPU` is sampled into the snapshot.** `Ctx::sampled` reads the tick
+counters (`cpu_ticks`, with the instant each process was read), waits
+the window (`display.interval`), then collects; the collector computes
+`cpu_percent` per process from its own two readings, because the table
+is read over tens of milliseconds and a window measured for the whole
+pass overstates a busy process. Every path uses it: `new`, `snap`,
+`now` and the live views (`Ctx::live`). A zero window skips the wait
+and leaves `cpu_percent` unset; `psm snapshots` reads the table once,
+it only counts.
+
 ## Storage
 
 SQLite, one file, five tables:
@@ -133,7 +143,8 @@ SQLite, one file, five tables:
 sessions            id, name (unique), created_at, archived_at
 snapshots           id, session_id, seq, label, description, system figures,
                     collector_uid, deep, clk_tck, uptime_seconds
-processes           one row per process per snapshot
+processes           one row per process per snapshot, including the
+                    sampled cpu_percent (NULL when not sampled)
 snapshot_meminfo    every /proc/meminfo key per snapshot
 snapshot_cgroups    memory.current / memory.swap.current per cgroup
 ```
@@ -237,6 +248,18 @@ The memory impact ranking is a single list over all four kinds, sorted
 by absolute change. `Metric` defines the value (`total`, `anon`, `pss`)
 and always adds swap.
 
+CPU is one table, `cpu_table` in `analysis/reports.rs`, shaped like
+the memory impact: BEFORE and AFTER are the sampled `cpu_percent` of
+each side (`-` when absent or not sampled), DELTA their difference in
+points (new from 0, gone to 0), and USED the CPU seconds in between
+from `Change::cpu_ticks`, which gives a running change its cumulative
+counters at each snapshot, a new or restarted one no before and the
+new instance's counters, and nothing for a gone one (its final
+counters went with it). The wall is the difference of
+`uptime_seconds`; the total line is the sum of USED as a share of one
+core over it. Per process or per group; the summary line and `--brief`
+take the total and largest users from `CpuTime`.
+
 ### Grouping
 
 `Grouper` maps a process to a group key. It is built over *both*
@@ -283,11 +306,11 @@ query), so it survives a reboot where `uptime_seconds` would not.
 and each table of `info`: filter, optionally group, sort, cut, render.
 `info` calls it once per metric over the same collected snapshot.
 
-`%CPU` needs two readings. For live views `Ctx::live` reads the tick
-counters, sleeps for the interval, collects, and computes
-`delta_ticks / (delta_seconds * CLK_TCK) * 100` per
-`(pid, start_time)`. A stored snapshot has one reading, so `show` uses
-the lifetime average.
+`%CPU` needs two readings: `delta_ticks / (delta_seconds * CLK_TCK) *
+100` per `(pid, start_time)`, which the collector computes over the
+sampling window (see Collection). `show` uses the sample a stored
+snapshot carries; a snapshot taken without one (older, or
+`interval = "0"`) falls back to the lifetime average.
 
 ## Tracking a program
 

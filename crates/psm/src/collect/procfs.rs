@@ -4,6 +4,7 @@
 use std::collections::{BTreeSet, HashMap};
 use std::os::unix::fs::MetadataExt;
 use std::path::{Path, PathBuf};
+use std::time::Instant;
 
 use anyhow::{Context, Result};
 use procfs::ProcError;
@@ -22,15 +23,17 @@ pub struct Options {
     pub cgroups: bool,
 }
 
-/// Cumulative CPU ticks per process instance `(pid, start_time)`: the first of
-/// the two readings a CPU percentage needs.
-pub fn cpu_ticks(root: &Path) -> Result<HashMap<(i64, i64), i64>> {
+/// Cumulative CPU ticks per process instance `(pid, start_time)`, with the
+/// moment each was read: the first of the two readings a CPU percentage needs.
+pub type Ticks = HashMap<(i64, i64), (i64, Instant)>;
+
+pub fn cpu_ticks(root: &Path) -> Result<Ticks> {
     Ok(processes(root)?
         .filter_map(|p| p.stat().ok())
         .map(|s| {
             (
                 (s.pid as i64, s.starttime as i64),
-                (s.utime + s.stime) as i64,
+                ((s.utime + s.stime) as i64, Instant::now()),
             )
         })
         .collect())
@@ -52,11 +55,14 @@ fn allowed<T>(r: Result<T, ProcError>, denied: &mut bool) -> Option<T> {
 }
 
 /// Returns the snapshot and the number of processes with fields hidden by
-/// missing privileges.
-pub fn collect(o: &Options) -> Result<(Snapshot, usize)> {
+/// missing privileges. With `first` (an earlier `cpu_ticks`), every process
+/// gets `cpu_percent` over the time between its two readings; a process
+/// without a first reading started in between and gets none.
+pub fn collect(o: &Options, first: Option<&Ticks>) -> Result<(Snapshot, usize)> {
     let users = rawproc::usernames();
     let mut procs = Vec::new();
     let mut restricted = 0;
+    let clk_tck = procfs::ticks_per_second() as f64;
 
     // psm itself would show up as new and gone in every comparison.
     let own_pid = if o.root == Path::new("/proc") {
@@ -70,6 +76,16 @@ pub fn collect(o: &Options) -> Result<(Snapshot, usize)> {
             continue;
         }
         let Ok(stat) = p.stat() else { continue };
+        // Timed per process: the table is read over some milliseconds, and a
+        // window measured for the whole pass would overstate a busy process.
+        let cpu_percent = first
+            .and_then(|f| f.get(&(stat.pid as i64, stat.starttime as i64)))
+            .and_then(|(ticks, at)| {
+                let secs = at.elapsed().as_secs_f64();
+                (secs > 0.0 && clk_tck > 0.0).then(|| {
+                    ((stat.utime + stat.stime) as i64 - ticks) as f64 / (secs * clk_tck) * 100.0
+                })
+            });
         let status = p.status().ok();
         let kthread = stat.flags & PF_KTHREAD != 0;
         let mut denied = false;
@@ -135,6 +151,7 @@ pub fn collect(o: &Options) -> Result<(Snapshot, usize)> {
             }),
             cpu_user: stat.utime as i64,
             cpu_system: stat.stime as i64,
+            cpu_percent,
             thread_count: Some(stat.num_threads),
             nice: Some(stat.nice),
             read_bytes: io.as_ref().map(|i| i.read_bytes as i64),

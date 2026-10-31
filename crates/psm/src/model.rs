@@ -30,6 +30,9 @@ pub struct Proc {
     pub uss_bytes: Option<i64>,
     pub cpu_user: i64,
     pub cpu_system: i64,
+    /// `%CPU` over the sampling window right before the snapshot (100 = one
+    /// core); `None` when the window was 0 or the process started inside it.
+    pub cpu_percent: Option<f64>,
     pub thread_count: Option<i64>,
     pub nice: Option<i64>,
     pub read_bytes: Option<i64>,

@@ -30,9 +30,55 @@ fn reports_and_export() {
         "unchanged fields are left out"
     );
 
+    // The fixture ticks never move, so every sampled %CPU is 0 and only the
+    // processes that used CPU in between stay: `node` is new and counts its
+    // whole life.
     let cpu = e.json("after", &["report", "cpu", "--json"]);
-    assert_eq!(rows(&cpu, "cpu")[0]["name"], "code");
+    assert_eq!(column(rows(&cpu, "cpu"), "process"), ["code", "node"]);
     assert_eq!(rows(&cpu, "cpu")[0]["cpu_seconds"], 6.0);
+    assert_eq!(rows(&cpu, "cpu")[0]["before"], 0.0);
+    assert_eq!(rows(&cpu, "cpu")[0]["after"], 0.0);
+    assert_eq!(rows(&cpu, "cpu")[0]["delta"], 0.0);
+    assert_eq!(rows(&cpu, "cpu")[1]["status"], "new");
+    assert_eq!(rows(&cpu, "cpu")[1]["before"], Value::Null, "not there yet");
+    assert_eq!(cpu["cpu_total"]["seconds"], 9.6);
+    assert_eq!(cpu["cpu_total"]["wall_seconds"], 3600.0);
+    let grouped = e.json("after", &["report", "cpu", "--group", "name", "--json"]);
+    assert_eq!(rows(&grouped, "cpu")[0]["name"], "code");
+    let text = e.ok("after", &["report", "cpu"]);
+    assert!(
+        text.contains("CPU   #0 baseline -> now   (%CPU at each snapshot, DELTA in points; USED = CPU seconds in between)\n")
+            && text.contains("\nTotal used: 9.6s over 1h (0.3 % of one core)\n"),
+        "{text}"
+    );
+
+    // A snapshot taken with interval = "0" has no sample: that side is `-`,
+    // DELTA is unknown rather than a change from 0, and the table says so.
+    let cfg = std::env::temp_dir().join(format!("psm-test-{}-nosample.toml", std::process::id()));
+    std::fs::write(&cfg, "[display]\ninterval = \"0\"\n").unwrap();
+    let plain = Env::new("nosample");
+    let o = plain
+        .command("before")
+        .args(["--config", cfg.to_str().unwrap(), "new", "t"])
+        .output()
+        .unwrap();
+    assert!(o.status.success());
+    std::fs::remove_file(&cfg).unwrap();
+    let cpu = plain.json("after", &["report", "cpu", "--json"]);
+    assert_eq!(rows(&cpu, "cpu")[0]["process"], "code");
+    assert_eq!(rows(&cpu, "cpu")[0]["before"], Value::Null);
+    assert_eq!(rows(&cpu, "cpu")[0]["after"], 0.0);
+    assert_eq!(
+        rows(&cpu, "cpu")[0]["delta"],
+        Value::Null,
+        "unknown, not +0"
+    );
+    assert_eq!(cpu["cpu_unsampled"], json!(["#0 baseline"]));
+    assert!(
+        plain
+            .ok("after", &["report", "cpu"])
+            .contains("\nNo %CPU sample in #0 baseline (taken by an older psm, or with interval = \"0\"): take a new snapshot for BEFORE/AFTER\n"),
+    );
 
     let growth = e.json("after", &["report", "growth", "--json"]);
     assert_eq!(
@@ -161,13 +207,13 @@ fn brief_is_the_diff_on_one_line() {
     e.before_and_after(&[]);
     let line = e.ok("after", &["diff", "--brief"]);
     assert_eq!(line.lines().count(), 1, "{line}");
-    assert!(
-        line.starts_with("#0 baseline -> now: 5 -> 5 processes, new 2, gone 2, restarted 1, net -36 MiB (RSS + swap); top: rust-analyzer -468 MiB, code +400 MiB, node +72 MiB"),
-        "{line}"
+    assert_eq!(
+        line,
+        "#0 baseline -> now: 5 -> 5 processes, new 2, gone 2, restarted 1, net -36 MiB (RSS + swap); top: rust-analyzer -468 MiB, code +400 MiB, node +72 MiB; cpu 9.6s: code 6.0s, node 3.6s\n"
     );
     assert!(
         e.ok("after", &["diff", "--brief", "--top", "1"])
-            .ends_with("top: rust-analyzer -468 MiB\n")
+            .ends_with("top: rust-analyzer -468 MiB; cpu 9.6s: code 6.0s\n")
     );
     assert!(
         e.ok("after", &["diff", "--brief", "--min-delta", "10G"])
@@ -181,6 +227,8 @@ fn brief_is_the_diff_on_one_line() {
         ["rust-analyzer", "code", "node"]
     );
     assert_eq!(rows(&j, "top")[0]["status"], "restarted");
+    assert_eq!(j["cpu"]["seconds"], 9.6);
+    assert_eq!(column(rows(&j["cpu"], "top"), "name"), ["code", "node"]);
     assert!(
         e.fails("after", &["report", "growth", "--brief"])
             .contains("--brief is for `psm diff`")

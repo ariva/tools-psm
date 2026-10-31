@@ -133,7 +133,7 @@ pub fn live_snapshot(ctx: &Ctx, like: Option<&Snapshot>) -> Result<Snapshot> {
     let cmdline = like.map_or(ctx.cfg.collection.cmdline, |s| {
         s.processes.iter().any(|p| p.cmdline.is_some())
     });
-    let (mut snapshot, _) = ctx.collect(deep, cmdline)?;
+    let (mut snapshot, _) = ctx.sampled(deep, cmdline, ctx.interval(&None)?)?;
     snapshot.label = Some("now".into());
     Ok(snapshot)
 }

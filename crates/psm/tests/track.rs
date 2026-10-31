@@ -32,6 +32,40 @@ fn data(o: &Output) -> Value {
     v["data"].take()
 }
 
+/// `new`/`snap` sample %CPU over the window; a busy child shows in CPU AT
+/// SNAPSHOT and in the pid card. Real /proc: fixture ticks never move.
+#[test]
+fn snapshots_carry_sampled_cpu() {
+    let db = std::env::temp_dir().join(format!("psm-test-{}-cpu.db", std::process::id()));
+    let _ = std::fs::remove_file(&db);
+    let psm = |args: &[&str]| real(&[&["--db", db.to_str().unwrap()][..], args].concat());
+    assert!(psm(&["new", "t"]).status.success());
+    let mut busy = Command::new("sh")
+        .args(["-c", "while :; do :; done"])
+        .spawn()
+        .unwrap();
+    let pid = busy.id().to_string();
+    let o = psm(&["snap", "busy"]);
+    assert!(o.status.success(), "{}", String::from_utf8_lossy(&o.stderr));
+    let o = psm(&["diff", "0", "1", "--pid", &pid, "--json"]);
+    let mut v: Value = serde_json::from_str(&stdout(&o)).unwrap();
+    let d = v["data"].take();
+    // Kill the loop before any assertion can panic and leave it behind.
+    let _ = busy.kill();
+    let _ = busy.wait();
+    let row = &d["cpu"][0];
+    assert_eq!(row["process"], "sh", "{d}");
+    assert_eq!(row["status"], "new");
+    assert_eq!(row["before"], Value::Null, "not there at the baseline");
+    let after = row["after"].as_f64().unwrap();
+    assert!((50.0..=150.0).contains(&after), "one busy thread: {after}");
+    assert_eq!(row["delta"], row["after"]);
+    assert!(row["cpu_seconds"].as_f64().unwrap() > 0.0);
+    let card = stdout(&psm(&["pid", &pid, "latest"]));
+    assert!(card.contains("% at the snapshot"), "{card}");
+    let _ = std::fs::remove_file(&db);
+}
+
 #[test]
 fn spawn_samples_until_the_command_exits() {
     let o = real(&[
