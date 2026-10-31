@@ -75,7 +75,11 @@ const BRIEF_MOVERS: usize = 3;
 /// `psm diff --brief`: the whole diff on one line, for logs and messages.
 fn brief(ctx: &Ctx, a: &Snapshot, b: &Snapshot, args: &DiffArgs) -> Result<()> {
     let mut s = diff_settings(ctx, a, b, args)?;
-    s.top = Some(args.top.unwrap_or(BRIEF_MOVERS));
+    s.top = Some(match args.top {
+        Some(0) => usize::MAX,
+        Some(n) => n,
+        None => BRIEF_MOVERS,
+    });
     let d = Diff::new(a, b, &s.filter);
     if !d.same_boot {
         s.group.get_or_insert_with(|| "name".into());
@@ -194,6 +198,7 @@ pub fn report(ctx: &Ctx, kind: ReportKind, args: &DiffArgs) -> Result<()> {
         },
         ReportKind::New => Section::New,
         ReportKind::Gone => Section::Gone,
+        ReportKind::Restarted => Section::Restarted,
         ReportKind::Growth => Section::Growth,
         ReportKind::Cpu => Section::Cpu,
         ReportKind::Meminfo => Section::Meminfo,
@@ -354,7 +359,7 @@ fn diff_settings(ctx: &Ctx, a: &Snapshot, b: &Snapshot, args: &DiffArgs) -> Resu
                 .as_deref()
                 .unwrap_or(&ctx.cfg.diff.min_memory_delta),
         )?,
-        top: args.top.or(ctx.cfg.display.top),
+        top: args.top.or(ctx.cfg.display.top).filter(|&n| n > 0),
         group: ctx.group(&args.group),
     })
 }
@@ -384,6 +389,11 @@ fn compare(
     sections: &[Section],
 ) -> Result<()> {
     let mut s = diff_settings(ctx, a, b, args)?;
+    // A full diff has many tables: a few rows each by default (config diff.top).
+    // A report is one table and follows display.top, like every other list.
+    if sections.contains(&Section::Summary) && args.top.is_none() {
+        s.top = Some(ctx.cfg.diff.top).filter(|&n| n > 0);
+    }
     let d = Diff::new(a, b, &s.filter);
     let mut text: Vec<String> = Vec::new();
     if !d.same_boot {
@@ -456,6 +466,8 @@ fn compare(
                 }
                 text.push(lines.join("\n"));
             }
+            // Tables already this short: the digest would repeat them.
+            Section::Top if s.top.is_some_and(|n| n <= TOP_ROWS) => {}
             Section::Top => {
                 // A long diff scrolls; the answer to "who moved memory" goes last.
                 let digest = DiffSettings {
@@ -469,11 +481,13 @@ fn compare(
                 )];
                 let mut top = Map::new();
                 if d.same_boot {
-                    let (table, _, label) = memory_impact(&d, &digest, None);
+                    let (mut table, _, label) = memory_impact(&d, &digest, None);
+                    table.hidden = 0; // the full ranking is above
                     parts.push(format!("By process   ({label})\n{}", table.render()));
                     top.insert("processes".into(), table.json());
                 }
-                let (table, net, label) = memory_impact(&d, &digest, Some(program));
+                let (mut table, net, label) = memory_impact(&d, &digest, Some(program));
+                table.hidden = 0;
                 parts.push(format!(
                     "By {}   ({label})\n{}",
                     program.title().to_lowercase(),
@@ -623,7 +637,8 @@ pub fn snap_digest(
     if !d.same_boot {
         return Ok(None);
     }
-    let (table, _, label) = memory_impact(&d, &s, None);
+    let (mut table, _, label) = memory_impact(&d, &s, None);
+    table.hidden = 0; // `snap` has no --top; the diff has the rest
     Ok((!table.rows.is_empty()).then_some((label.to_string(), table)))
 }
 

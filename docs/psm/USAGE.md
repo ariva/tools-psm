@@ -14,11 +14,11 @@ session, and the live views show the machine now.
 | What changed since I started? | `psm diff` (baseline -> now; `psm new` takes the baseline) | [a typical session](#a-typical-session) |
 | What changed since my last snapshot? | `psm diff prev` | [comparing](#comparing) |
 | Is it still growing? | `psm report trend` | [trend](#is-it-still-growing) |
-| Who moved memory the most? | `psm diff --memory` | [memory impact](#memory-impact) |
+| Who moved memory the most? | `psm report memory` | [memory impact](#memory-impact) |
 | Memory went down but no process grew. Where did it go? | `psm report meminfo` | [reports](#reports) |
 | What is this process, and where does it come from? | `psm procs --name X --group exe` (then `parent`, `cmdline`) | [example](#what-is-this-process-and-where-does-it-come-from) |
-| Which part of it grew? | `psm diff --name X --group parent --memory` | [example](#which-part-of-it-grew) |
-| How did one application change? | `psm diff --name X --memory` | [example](#how-did-one-application-change) |
+| Which part of it grew? | `psm report memory --name X --group parent` | [example](#which-part-of-it-grew) |
+| How did one application change? | `psm report memory --name X` | [example](#how-did-one-application-change) |
 | Is it still growing? | `psm report timeline --name X` | [example](#is-it-still-growing) |
 | Which of its processes is busy right now? | `psm procs --name X --sort cpu --top 3` | [example](#which-of-its-processes-is-busy-right-now) |
 | Did the new version use more memory? | `psm sessions compare old new --name X` | [example](#did-the-new-version-use-more-memory) |
@@ -313,7 +313,7 @@ down: one document per round.
 ```bash
 psm info --watch              # every 10s
 psm procs --sort cpu --top 10 --watch 2
-psm diff --memory --watch 30  # baseline -> now, again every 30s
+psm report memory --watch 30  # baseline -> now, again every 30s
 ```
 `used` is `MemTotal - MemAvailable`, not a sum of process memory.
 
@@ -354,14 +354,18 @@ update"`, changed with `psm sessions rename`. Both show in the lists
 
 With no target, the target is `now`.
 
-Without section flags you get everything: summary, new, gone,
-restarted, memory impact, CPU, the programs whose process count
-changed, and a closing top-5 digest.
-`--new`, `--gone`, `--restarted`, `--memory` and `--cpu` pick sections;
-a single section has no digest.
+`diff` is the whole comparison: summary, new, gone, restarted, memory
+impact, CPU, the programs whose process count changed, and, when the
+tables are longer than five rows, a closing top-5 digest. Every table
+shows five rows by default and ends with `(32 more rows; --top 0 shows
+every row)` when it cut some; `--top 10` or the config `diff.top`
+change the number, `--top 0` shows everything. One section alone is a [report](#reports): `psm report
+memory`, `psm report cpu`, `new`, `gone`, `restarted`. (The old section
+flags `--memory`, `--cpu`, `--new`, `--gone`, `--restarted` still work
+for scripts but are no longer listed.)
 
 `--brief` is the whole diff on one line, for a CI log, a commit message
-or a chat; the section flags are ignored with it:
+or a chat:
 
 ```bash
 psm diff --brief
@@ -372,7 +376,7 @@ psm diff --brief
 ```
 
 The movers are the largest absolute changes above `--min-delta`, three
-of them unless `--top` says otherwise; `--group`, `--metric` and the
+of them unless `--top` says otherwise (`--top 0`: all of them); `--group`, `--metric` and the
 filters apply. `cpu` is the CPU time used in between, total and the
 same number of largest users. With `--json` it is one small object
 (`from`, `to`, `processes`, `metric`, `net_change`, `top`, `cpu`).
@@ -381,7 +385,7 @@ has no `cpu` part.
 
 ### Memory impact
 
-`psm diff --memory` is one ranking over **all** processes, largest
+`psm report memory` is one ranking over **all** processes, largest
 absolute change first:
 
 | Status | Counts as |
@@ -398,7 +402,7 @@ absolute change first:
 | `--metric pss` | PSS + swap; both snapshots must be `--deep` |
 | `--min-delta <size>` | hide smaller changes; default `1M` |
 | `--group <key>` | one row per group instead of per process |
-| `--top <n>` | first n rows of each table |
+| `--top <n>` | first n rows of each table; `0` = every row. `diff` shows 5 per table by default (`diff.top`) and says how many rows it hides; a report shows every row (`display.top`) |
 
 Grouped by application:
 
@@ -452,7 +456,7 @@ Total used: 147.9s over 12m 30s (19.7 % of one core)
   interval reads small there, `psm track` is for peaks.
 
 Rows idle at both snapshots that used nothing in between are left out.
-`psm diff --cpu` is this table alone; the summary line of the diff and
+`psm report cpu` is this table alone; the summary line of the diff and
 `--brief` carry the total used and the largest users. Across a reboot
 there is no CPU table. `psm procs show <ref>` and the `%CPU` column of
 `psm pid` use the same stored sample. `--json` rows have `before`,
@@ -464,14 +468,18 @@ there is no CPU table. `psm procs show <ref>` and the `%CPU` column of
 psm report <kind> [a] [b]
 ```
 
-References and defaults are the same as for `diff`.
+References and defaults are the same as for `diff`, and so are the
+options: `--top`, `--group`, `--metric`, `--min-delta`, the filters and
+`--watch` all apply. `psm report <kind> --help` explains the columns of
+that one report and shows examples (`psm report cpu --help`:
+BEFORE/AFTER/DELTA/USED and the footer).
 
 | Kind | Shows |
 |---|---|
-| `memory` | the memory impact ranking (same as `diff --memory`) |
+| `memory` | the memory impact ranking |
 | `growth` | programs that grew, with the relative change |
 | `processes` | process count per program, changed or not |
-| `new`, `gone` | those sections only |
+| `new`, `gone`, `restarted` | those sections only |
 | `cpu` | `%CPU` at each snapshot and the CPU time used in between, per process (per group with `--group`); see [CPU](#cpu) |
 | `meminfo` | every `/proc/meminfo` field that changed |
 | `timeline` | one row per snapshot of the session |
@@ -687,7 +695,7 @@ The same filter on a diff. Who is responsible for the growth since the
 baseline?
 
 ```bash
-psm diff --name MainThread --group parent --memory
+psm report memory --name MainThread --group parent
 ```
 
 ```text
@@ -705,7 +713,7 @@ doubled its children. The `vite` watcher started from a shell is flat.
 ### How did one application change?
 
 ```bash
-psm diff --name chrome --memory
+psm report memory --name chrome
 ```
 
 ```text
@@ -813,7 +821,7 @@ BY PROGRAM   (RSS + swap)
 
 ```bash
 psm procs --name chrome --exclude-regex '^chrome_crashpad' --user "$USER"
-psm diff --name node --group cmdline --memory --json
+psm report memory --name node --group cmdline --json
 ```
 
 `--exclude-regex` is tested against the process name **and** the
@@ -982,14 +990,18 @@ psm faq                # common questions and the command that answers each
 psm faq memory         # only the rows mentioning memory
 psm --help             # the commands, and each global option explained with an example
 psm -h                 # the same on fewer lines
-psm diff --help   # options of one command, each value explained, examples
+psm diff --help   # options of one command, each value explained, its sections and columns, examples
 psm diff -h       # the same on fewer lines
+psm report cpu --help       # one report: its columns explained, the options that apply, examples
 psm help snapshots diff     # the same as psm diff --help; psm help session export for a subcommand
 psm version                 # name, version, build date and commit; also psm -v, psm --version
 ```
 
 `help`, `-h` and `--help` are one command: `psm -h snapshots diff` is
-`psm help snapshots diff` on fewer lines.
+`psm help snapshots diff` on fewer lines. Every help page starts with
+the version line (`psm (process state monitor) 3.0.1 (built ..., commit
+...)`) and a blank line, like every other output; author and repository
+are on the top-level page only.
 
 Global options (`--config`, `--db`, `--kernel`, `--json`, `--proc-root`)
 work with every command and can go before or after it: `psm --json diff`
@@ -1013,7 +1025,7 @@ running `psm init` after an upgrade keeps the script current.
 
 Underneath, `psm completions <shell>` prints a completion script
 generated from the same definitions as `--help`, so commands, options
-and fixed values (`--group`, `--sort`, `--metric`, report kinds) all
+and fixed values (`--group`, `--sort`, `--metric`) and the report kinds all
 complete. To install it by hand, or for another shell:
 
 ```bash
@@ -1028,8 +1040,8 @@ psm sessions <Tab>       list  purge  compare  export  import  delete
 psm procs --group <Tab>   name  exe  cmdline  app  user  cgroup  parent  pid
 ```
 
-A fixed value of a positional (`report <kind>`, `completions
-<shell>`) and a subcommand next to words (`procs list`) are offered
+A fixed value of a positional (`completions <shell>`) and a subcommand
+next to words (`procs list`) are offered
 right after the command only; later words get the options (zsh and
 fish list options once a `-` is typed). In zsh, what follows `psm
 track --` completes as a command line of its own (command names, then
@@ -1205,7 +1217,7 @@ stored in snapshots either way.
 
 On a terminal, every command that prints for a person opens with the
 version line (`psm (process state monitor) 3.0.0 (built ..., commit
-...)`). With `--json`, for `export`, `sessions export`, `completions`,
+...)`) and a blank line; help pages open the same way. With `--json`, for `export`, `sessions export`, `completions`,
 or when standard output is a pipe or a file, it is left out, so data
 stays data.
 
@@ -1221,7 +1233,7 @@ that says which psm wrote it, what was run and when, then the command's
 result under `data`.
 
 ```bash
-psm diff prev --memory --min-delta 10M --group app --name slack --json
+psm report memory prev --min-delta 10M --group app --name slack --json
 ```
 
 ```json
@@ -1343,7 +1355,7 @@ deep = false          # collect PSS/USS              (--deep)
 
 [display]
 units = "auto"        # auto, B, KiB, MiB, GiB
-top = 30              #                              (--top)
+top = 30              # rows per list; 0 = all          (--top)
 group = "name"        #                              (--group; "pid" = none)
 kernel = false        #                              (--kernel)
 interval = "500ms"    # also the window `new`/`snap` sample %CPU over (--interval)
@@ -1352,6 +1364,7 @@ json_options = "full" # full, safe, none             (--json=LEVEL)
 [diff]
 metric = "total"      # total, anon, pss             (--metric)
 min_memory_delta = "1M"   #                          (--min-delta)
+top = 5               # rows per table of diff; 0 = all (--top)
 
 [track]
 every = "1s"          # sample period of `track`     (--every)

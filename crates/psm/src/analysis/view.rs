@@ -153,7 +153,7 @@ pub fn view_table(s: &Snapshot, cpu: &HashMap<i64, f64>, v: &View) -> Result<Tab
         "pid" => rows.sort_by_key(|r| r.pid),
         _ => {}
     }
-    if let Some(n) = v.top {
+    if let Some(n) = v.top.filter(|&n| n > 0) {
         rows.truncate(n);
     }
 

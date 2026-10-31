@@ -18,25 +18,18 @@ Snapshot references:
   <n>        a snapshot number within the session: 0 is the baseline, see `psm snapshots`
   <label>    newest snapshot with that label";
 
-#[derive(Clone, Copy, PartialEq, ValueEnum)]
+/// Which report; the subcommands of `report` carry the arguments.
+#[derive(Clone, Copy, PartialEq)]
 pub enum ReportKind {
-    /// Memory impact ranking (same as `snapshots diff --memory`)
     Memory,
-    /// Process count per program, changed or not
     Processes,
-    /// New processes
     New,
-    /// Gone processes
     Gone,
-    /// Programs that grew, with the relative change
+    Restarted,
     Growth,
-    /// %CPU at each snapshot and the CPU time used in between, per process (per group with --group)
     Cpu,
-    /// One row per snapshot of the session
     Timeline,
-    /// Every program across all snapshots of the session plus now: growing, shrinking, noisy or flat
     Trend,
-    /// Every /proc/meminfo field that changed
     Meminfo,
 }
 
@@ -61,7 +54,23 @@ Examples:
   psm procs --group name           one row per program
   psm procs --group cgroup         one row per application (systemd)
   psm procs --user alice --name chrome
-  psm procs show baseline          the processes of a stored snapshot"
+  psm procs show baseline          the processes of a stored snapshot
+
+Columns:
+  PID, PPID, USER  the process, its parent, its owner
+  %CPU             over the sampling window (--interval, 500 ms by default; 0 = average over its life);
+                   100 = one core busy, so a multi-threaded process can go above 100
+  %MEM             RSS as a share of total RAM (MemTotal); shared pages count in every process
+  RSS              memory in RAM right now, shared libraries counted once per process
+  SWAP             with --sort swap: memory of the process moved out of RAM
+  IO               with --sort io: bytes read + written to storage so far
+  PSS, USS         with --deep: RSS with shared pages split between their sharers, and private pages only
+  THR              threads
+  COMMAND          the process name (comm)
+  --group KEY      one row per group: COUNT is its processes; --group cgroup adds CGROUP MEM, the
+                   cgroup's own memory total
+Options: --sort COLUMN, --top N, --group KEY, --deep, --csv, --watch, and the filters
+(--user, --name, --exe, --pid, --cmdline, --exclude-regex) all apply."
     )]
     Procs {
         #[command(flatten)]
@@ -97,13 +106,18 @@ Examples:
   psm info                  now: top 5 by CPU, memory and threads
   psm info 10 --by cpu,mem  top 10, two tables
   psm info --top 10         the same; --top wins over a number
-  psm info --group name     rank programs instead of single processes")]
+  psm info --group name     rank programs instead of single processes
+
+Tables: TOP N BY CPU, MEMORY, THREADS, each with the columns of `psm procs`
+(see `psm procs --help`); the header is `psm status` system memory. Options:
+--top N, --by TABLES, --group KEY, --interval, --deep, and the filters
+(--user, --name, --exe, --pid, --cmdline, --exclude-regex) all apply.")]
     #[command(short_flag = 'i')]
     Info {
-        /// Rows per table
+        /// Rows per table; 0 = every row
         #[arg(default_value_t = 5)]
         n: usize,
-        /// Rows per table, the same as the number; wins when both are given
+        /// Rows per table, the same as the number; wins when both are given; 0 = every row
         #[arg(long, value_name = "N")]
         top: Option<usize>,
         /// Tables to show, comma-separated
@@ -161,8 +175,23 @@ Examples:
   psm diff 1                   snapshot #1 -> now
   psm diff 0 2                 two stored snapshots (#0 is the baseline)
   psm diff --group name        the whole diff per program
-  psm diff --memory --top 10   memory ranking only
-  psm diff --cpu               CPU table only
+  psm diff --top 10            ten rows per table instead of five
+  psm diff --top 0             every row of every table
+  psm diff --group name --name chrome   one row per program, one program
+  psm report memory --top 10   one section alone: psm report <kind>
+
+Sections, in order (one alone is `psm report <kind>`; its columns are explained in `psm report <kind> --help`):
+  summary line             process counts, net memory change, CPU used between the snapshots
+  NEW / GONE / RESTARTED   PID, PPID, RSS, PROCESS; restarted: OLD PID, NEW PID, BEFORE, AFTER, DELTA
+                           (report new, gone, restarted)
+  MEMORY IMPACT            every process that changed, largest change first (report memory)
+  CPU                      how busy each process was at each snapshot, CPU time used in between (report cpu)
+  PROCESS COUNTS           programs whose process count changed (report processes)
+  TOP MEMORY IMPACT        the largest movers again, so a long diff ends with the answer
+Every table shows 5 rows (config diff.top) and says how many it hides; --top N changes that, --top 0
+shows every row. The closing TOP 5 digest appears only when the tables above are longer than it.
+Options: --brief is the whole diff on one line; --top N, --group KEY, --metric, --min-delta, --watch
+and the filters (--user, --name, --exe, --pid, --cmdline, --exclude-regex) all apply, to `report` too.
 
 {REFERENCES}"))]
     #[command(short_flag = 'd')]
@@ -173,20 +202,23 @@ Examples:
     /// Active session summary (same as running without a command)
     Status,
     /// One report over two snapshots [default: baseline -> now], or over the whole session (timeline, trend)
+    ///
+    /// Each report is one table of `psm diff` on its own, with the same
+    /// references, options and filters: `psm report <kind> --help`
+    /// explains its columns.
     #[command(after_help = format!("\
 Examples:
   psm report growth                 programs that grew since the baseline
   psm report meminfo prev           system memory fields changed since the last snapshot
-  psm report cpu 0 2                CPU time between two snapshots
+  psm report cpu 0 2 --top 10       CPU between two snapshots, ten largest changes
   psm report timeline --name chrome one program across all snapshots
   psm report trend                  who keeps growing across all snapshots and now
+  psm report cpu --help             the columns of one report
 
 {REFERENCES}"))]
     Report {
-        /// Which report
-        kind: ReportKind,
-        #[command(flatten)]
-        diff: DiffArgs,
+        #[command(subcommand)]
+        cmd: ReportCmd,
     },
     /// Follow a program while it runs: min, max and average of its memory, CPU and threads
     ///
@@ -411,16 +443,29 @@ Examples:
 }
 
 /// `psm (process state monitor) 2.1.5 (built 2026-09-30, commit 563af30)`:
-/// what `psm version` prints and the first line of `psm -h`.
-pub const VERSION_LINE: &str = concat!(
-    "psm (process state monitor) ",
-    env!("CARGO_PKG_VERSION"),
-    " (built ",
-    env!("PSM_BUILD_DATE"),
-    ", commit ",
-    env!("PSM_GIT_HASH"),
-    ")"
-);
+/// what `psm version` prints and the first line of every help page and
+/// every output for a person. A macro so the help templates, which clap
+/// wants as one literal, can embed it.
+macro_rules! version_line {
+    () => {
+        concat!(
+            "psm (process state monitor) ",
+            env!("CARGO_PKG_VERSION"),
+            " (built ",
+            env!("PSM_BUILD_DATE"),
+            ", commit ",
+            env!("PSM_GIT_HASH"),
+            ")"
+        )
+    };
+}
+pub(crate) use version_line;
+
+pub const VERSION_LINE: &str = version_line!();
+
+/// How every output for a person opens: the version line, then a blank
+/// line. Printed with `out`, which adds the final newline.
+pub const HEADER: &str = concat!(version_line!(), "\n");
 
 pub fn version() -> String {
     VERSION_LINE.to_string()
@@ -440,6 +485,239 @@ pub enum InitCmd {
     },
 }
 
+const NARROWING: &str = "\
+Options (the same as `psm diff`): --top N keeps the first N rows (0: every row); --group KEY makes one row per
+program, app, user, cgroup, ...; --name X, --user, --exe, --pid, --cmdline and --exclude-regex
+pick the processes; --metric and --min-delta say what counts as memory; --watch repeats a
+comparison with the live state.";
+
+/// The reports: each carries the arguments of `diff`, so `psm report <kind>
+/// --help` is one page about one table.
+#[allow(clippy::large_enum_variant)]
+#[derive(Clone, Subcommand)]
+pub enum ReportCmd {
+    /// Memory impact ranking: every process that changed, largest change first
+    #[command(after_help = format!("\
+Columns:
+  PROCESS, PID, STATUS  running, new, gone or restarted; a restarted process is one row with its new pid
+  BEFORE, AFTER         its memory at each snapshot by --metric: total (RSS + swap, the default),
+                        anon (heap and stack), pss (needs --deep snapshots)
+  DELTA                 AFTER - BEFORE; a new process starts from 0, a gone one ends at 0
+  --group KEY           one row per group; #BEFORE and #AFTER count its processes at each snapshot
+Rows: largest |DELTA| first. Changes under --min-delta (config diff.min_memory_delta) are hidden.
+
+{NARROWING}
+
+Examples:
+  psm report memory                      baseline -> now
+  psm report memory prev --top 10        the ten largest changes since the last snapshot
+  psm report memory --group app          one row per application
+  psm report memory --name chrome --metric anon   one program, what it allocated itself
+
+{REFERENCES}"))]
+    Memory(DiffArgs),
+    /// Process count per program at each snapshot, changed or not
+    #[command(after_help = format!("\
+Columns:
+  NAME            the program (--group KEY: the group)
+  BEFORE, AFTER   how many processes it had at each snapshot
+  DELTA           AFTER - BEFORE
+Rows: largest |DELTA| first, then the larger AFTER. `psm diff` shows only the changed rows.
+
+{NARROWING}
+
+Examples:
+  psm report processes                   every program, baseline -> now
+  psm report processes --name chrome     one program: did it spawn more helpers?
+  psm report processes --group user      processes per user
+
+{REFERENCES}"))]
+    Processes(DiffArgs),
+    /// Processes present in the second snapshot but not in the first
+    #[command(after_help = format!("\
+Columns:
+  PID, PPID   the new process and its parent
+  RSS         its memory in RAM at the second snapshot
+  PROCESS     its name
+Rows: largest RSS first. A process is the same one when pid and start time match; a new pid under
+the same name is a restart, shown by `psm report restarted`.
+
+{NARROWING}
+
+Examples:
+  psm report new                   started since the baseline and still running
+  psm report new prev              started since the last snapshot
+  psm report new --user alice      one user's new processes
+
+{REFERENCES}"))]
+    New(DiffArgs),
+    /// Processes present in the first snapshot but not in the second
+    #[command(after_help = format!("\
+Columns:
+  PID       the process as it was in the first snapshot
+  RSS       its memory in RAM then: what ending it freed
+  PROCESS   its name
+Rows: largest RSS first.
+
+{NARROWING}
+
+Examples:
+  psm report gone                  ended since the baseline
+  psm report gone 0 1              ended between two stored snapshots
+
+{REFERENCES}"))]
+    Gone(DiffArgs),
+    /// Processes that ended and came back under a new pid between the two snapshots
+    #[command(after_help = format!("\
+Columns:
+  OLD PID, NEW PID      the pid in the first snapshot and in the second
+  BEFORE, AFTER         its memory at each snapshot by --metric (total, anon or pss)
+  DELTA                 AFTER - BEFORE
+  PROCESS               its name
+A restart is the same name and parent gone and back with a new pid; the memory impact ranking counts
+it as one row (status restarted), so a crash loop does not read as a leak plus a new process.
+
+{NARROWING}
+
+Examples:
+  psm report restarted             since the baseline
+  psm report restarted prev        since the last snapshot
+
+{REFERENCES}"))]
+    Restarted(DiffArgs),
+    /// Programs that grew, with the relative change
+    #[command(after_help = format!("\
+Columns:
+  NAME            the program (--group KEY: the group)
+  BEFORE, AFTER   its memory at each snapshot by --metric (all its processes summed)
+  DELTA           AFTER - BEFORE; only rows that grew are shown
+  %               DELTA as a share of BEFORE; empty when the program was not there before
+Rows: largest DELTA first. Changes under --min-delta are hidden.
+
+{NARROWING}
+
+Examples:
+  psm report growth                      since the baseline
+  psm report growth prev --top 5         the five biggest growers since the last snapshot
+  psm report growth --group app          per application
+
+{REFERENCES}"))]
+    Growth(DiffArgs),
+    /// CPU impact ranking: how busy every process was at each snapshot and the CPU time it used in between
+    #[command(after_help = format!("\
+Columns:
+  PROCESS, PID, STATUS  running, new or gone (--group KEY: one row per group instead)
+  BEFORE, AFTER         %CPU at each snapshot, sampled over display.interval (500 ms by default)
+                        right before it was taken; 100 = one core busy. Two blinks, not an average.
+  DELTA                 AFTER - BEFORE in points; a new process starts from 0, a gone one ends at 0.
+                        `-` when that snapshot has no sample (an older psm, or interval 0); a note says which.
+  USED                  CPU seconds the process burned between the snapshots (user + system), from the
+                        kernel's counters, so it covers the whole period. new: its whole life so far;
+                        gone: unknown (-). USED / wall time x 100 = its average %CPU over the period.
+  Total used            the sum of USED over every process, not only the rows shown; the wall time
+                        between the snapshots; and the sum as a share of one core.
+Rows: largest |DELTA| first, then USED. Idle rows (both sides under 0.05, nothing used) are dropped.
+Across a reboot there is no CPU table.
+
+{NARROWING}
+
+Examples:
+  psm report cpu                     baseline -> now
+  psm report cpu prev                since the last snapshot
+  psm report cpu 0 2 --top 10        two stored snapshots, the ten largest changes
+  psm report cpu --group name        one row per program
+  psm report cpu --name chrome       one program's processes
+
+{REFERENCES}"))]
+    Cpu(DiffArgs),
+    /// One row per snapshot of the session: when, how many processes, system memory
+    #[command(after_help = "\
+Columns:
+  ID, LABEL, TIME     the snapshot: 0 is the baseline
+  PROCS               processes in it (with a filter: the ones that match)
+  USED                system memory in use then: MemTotal - MemAvailable
+  SWAP                swap in use then
+  MATCHED RSS+SWAP    with a filter: the memory of the matching processes, so one program can be
+                      followed through the session
+  DESCRIPTION         the text given to `psm snap`
+Covers the whole session and takes no snapshot references. Options: the filters (--user, --name,
+--exe, --pid, --cmdline, --exclude-regex) apply.
+
+Examples:
+  psm report timeline                  the session's snapshots
+  psm report timeline --name chrome    one program's memory in each of them")]
+    Timeline(DiffArgs),
+    /// Every program across all snapshots of the session plus now: growing, shrinking, noisy or flat
+    #[command(after_help = "\
+Columns:
+  NAME          the program (--group KEY: the group)
+  FIRST, LAST   its memory at the first snapshot and now, by --metric
+  DELTA         LAST - FIRST
+  UP            how many of the steps between points went up, out of all steps
+  SLOPE/H       bytes per hour, a straight line fitted through every point; empty under a minute of span
+  VERDICT       flat: DELTA under --min-delta; growing or shrinking: no step of --min-delta or more
+                went the other way; noisy: it went both ways
+Rows: flat last, then largest |DELTA| first. A program absent from a point counts 0 there; one seen
+at fewer than two points is left out. Needs two stored snapshots plus now; takes no snapshot references.
+Options: --top N, --group KEY, --metric, --min-delta and the filters (--user, --name, --exe, --pid,
+--cmdline, --exclude-regex) apply.
+
+Examples:
+  psm report trend                       every program
+  psm report trend --name chrome         one program
+  psm report trend --group app --top 5   the five applications that moved most
+  psm report trend --min-delta 50M       ignore movements under 50 MiB")]
+    Trend(DiffArgs),
+    /// Every /proc/meminfo field that changed between the two snapshots
+    #[command(after_help = format!("\
+Columns:
+  FIELD           the /proc/meminfo field, as the kernel names it
+  BEFORE, AFTER   its value at each snapshot; sizes as bytes, counts (HugePages_*) as numbers
+  DELTA           AFTER - BEFORE
+Rows: largest |DELTA| first; unchanged fields are left out. Answers the case process data cannot:
+system memory went down but no process grew (tmpfs, page cache, kernel slab). Filters do not apply.
+
+Examples:
+  psm report meminfo          baseline -> now
+  psm report meminfo prev     since the last snapshot
+  psm report meminfo 0 1      between two stored snapshots
+
+{REFERENCES}"))]
+    Meminfo(DiffArgs),
+}
+
+impl ReportCmd {
+    pub fn kind(&self) -> ReportKind {
+        match self {
+            Self::Memory(_) => ReportKind::Memory,
+            Self::Processes(_) => ReportKind::Processes,
+            Self::New(_) => ReportKind::New,
+            Self::Gone(_) => ReportKind::Gone,
+            Self::Restarted(_) => ReportKind::Restarted,
+            Self::Growth(_) => ReportKind::Growth,
+            Self::Cpu(_) => ReportKind::Cpu,
+            Self::Timeline(_) => ReportKind::Timeline,
+            Self::Trend(_) => ReportKind::Trend,
+            Self::Meminfo(_) => ReportKind::Meminfo,
+        }
+    }
+
+    pub fn args(&self) -> &DiffArgs {
+        match self {
+            Self::Memory(a)
+            | Self::Processes(a)
+            | Self::New(a)
+            | Self::Gone(a)
+            | Self::Restarted(a)
+            | Self::Growth(a)
+            | Self::Cpu(a)
+            | Self::Timeline(a)
+            | Self::Trend(a)
+            | Self::Meminfo(a) => a,
+        }
+    }
+}
+
 #[derive(Clone, Subcommand)]
 pub enum ProcsCmd {
     /// Processes now, with CPU and memory (the default)
@@ -448,7 +726,23 @@ pub enum ProcsCmd {
         after_help = "\
 Examples:
   psm procs list --sort cpu --top 10     the ten busiest
-  psm procs -l --group name              one row per program"
+  psm procs -l --group name              one row per program
+
+Columns:
+  PID, PPID, USER  the process, its parent, its owner
+  %CPU             over the sampling window (--interval, 500 ms by default; 0 = average over its life);
+                   100 = one core busy, so a multi-threaded process can go above 100
+  %MEM             RSS as a share of total RAM (MemTotal); shared pages count in every process
+  RSS              memory in RAM right now, shared libraries counted once per process
+  SWAP             with --sort swap: memory of the process moved out of RAM
+  IO               with --sort io: bytes read + written to storage so far
+  PSS, USS         with --deep: RSS with shared pages split between their sharers, and private pages only
+  THR              threads
+  COMMAND          the process name (comm)
+  --group KEY      one row per group: COUNT is its processes; --group cgroup adds CGROUP MEM, the
+                   cgroup's own memory total
+Options: --sort COLUMN, --top N, --group KEY, --deep, --csv, --watch, and the filters
+(--user, --name, --exe, --pid, --cmdline, --exclude-regex) all apply."
     )]
     List {
         #[command(flatten)]

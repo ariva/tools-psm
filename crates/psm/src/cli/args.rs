@@ -61,7 +61,7 @@ pub struct ViewArgs {
     /// Column to sort by
     #[arg(long, value_name = "COLUMN", value_parser = sort_columns())]
     pub sort: Option<String>,
-    /// Only the first N rows
+    /// Only the first N rows; 0 = every row [default: config display.top, else every row]
     #[arg(long, value_name = "N")]
     pub top: Option<usize>,
     /// Add PSS/USS columns
@@ -90,20 +90,20 @@ pub struct DiffArgs {
     pub a: Option<String>,
     /// Snapshot to compare with [default: now, the live state; nothing is stored]
     pub b: Option<String>,
-    /// Memory impact ranking only
-    #[arg(long)]
+    // Kept for scripts, hidden: `psm report memory` is the documented form.
+    #[arg(long, hide = true)]
     pub memory: bool,
-    /// CPU table only: %CPU at each snapshot and the time used in between
-    #[arg(long)]
+    // Kept for scripts, hidden: `psm report cpu` is the documented form.
+    #[arg(long, hide = true)]
     pub cpu: bool,
-    /// New processes only
-    #[arg(long)]
+    // Kept for scripts, hidden: `psm report new` is the documented form.
+    #[arg(long, hide = true)]
     pub new: bool,
-    /// Gone processes only
-    #[arg(long)]
+    // Kept for scripts, hidden: `psm report gone` is the documented form.
+    #[arg(long, hide = true)]
     pub gone: bool,
-    /// Restarted processes only
-    #[arg(long)]
+    // Kept for scripts, hidden: `psm report restarted` is the documented form.
+    #[arg(long, hide = true)]
     pub restarted: bool,
     /// One line: counts, net memory change and the largest movers (diff only)
     #[arg(long)]
@@ -114,7 +114,7 @@ pub struct DiffArgs {
     /// What counts as memory in the comparison
     #[arg(long, value_parser = metrics())]
     pub metric: Option<String>,
-    /// Only the first N rows of each table
+    /// Only the first N rows of each table; 0 = every row [default: 5 for diff (config diff.top), every row for a report]
     #[arg(long, value_name = "N")]
     pub top: Option<usize>,
     /// Hide memory changes smaller than this, e.g. 10M

@@ -15,7 +15,7 @@ psm new chrome-update       # new session + baseline snapshot
 # ... update, run the workload ...
 psm diff                    # baseline -> now (the live state; nothing is stored)
 psm snap after-update       # keep this state; prints the top memory changes
-psm diff prev --memory      # who moved memory since the last snapshot
+psm report memory prev      # who moved memory since the last snapshot
 psm report trend            # growing, shrinking, noisy or flat, over the session
 psm track -- cargo build    # min/max/avg of memory, CPU, threads while it runs; --times 5 to bench
 ```

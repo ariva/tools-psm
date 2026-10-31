@@ -330,7 +330,7 @@ pub fn run(cli: Cli) -> Result<()> {
     // pipes and scripts (--json, exports, a redirected stdout) stays clean.
     if !cli.json() && !prints_data(&cli.cmd) && std::io::IsTerminal::is_terminal(&std::io::stdout())
     {
-        out(format!("{}\n", crate::cli::commands::VERSION_LINE));
+        out(crate::cli::commands::HEADER);
     }
     // Handled before loading the configuration: these must work without one.
     if cli.bare_config() {
@@ -489,10 +489,17 @@ fn watch_of(cmd: &Cmd) -> Result<Option<String>> {
         | Cmd::Pid {
             watch, snapshot, ..
         } => (watch, snapshot == "now"),
-        Cmd::Diff(args) | Cmd::Report { diff: args, .. } => (
+        Cmd::Diff(args) => (
             &args.watch,
             args.a.as_deref() == Some("now") || args.b.as_deref().unwrap_or("now") == "now",
         ),
+        Cmd::Report { cmd } => {
+            let args = cmd.args();
+            (
+                &args.watch,
+                args.a.as_deref() == Some("now") || args.b.as_deref().unwrap_or("now") == "now",
+            )
+        }
         _ => return Ok(None),
     };
     if watch.watch.is_some() && !live {
@@ -542,7 +549,7 @@ fn dispatch(ctx: &Ctx, cmd: Cmd) -> Result<()> {
         } => capture::snap(ctx, label, description, &capture),
         Cmd::Status => sessions::status(ctx),
         Cmd::List => sessions::snapshots(ctx),
-        Cmd::Report { kind, diff: args } => compare::report(ctx, kind, &args),
+        Cmd::Report { cmd } => compare::report(ctx, cmd.kind(), cmd.args()),
         Cmd::Track {
             words,
             every,

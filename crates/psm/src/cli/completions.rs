@@ -52,8 +52,8 @@ pub fn script(shell: Shell) -> String {
         .collect();
     // Words that belong right after a command only, where the static
     // scripts offer them at every position (bash) or not at all (fish):
-    // the fixed values of a first positional (`report <kind>`,
-    // `completions <shell>`), and the subcommands of a command that also
+    // the fixed values of a first positional (`completions <shell>`), and
+    // the subcommands of a command that also
     // takes positionals (`procs <words>`: clap refuses `list` after a word).
     let gated: Vec<Gated> = cmd
         .get_subcommands()
@@ -272,7 +272,7 @@ fn zsh(script: String, flagged: &[Flagged], gated: &[Gated]) -> String {
 }
 
 fn fish(mut script: String, flagged: &[Flagged], gated: &[Gated]) -> String {
-    // The previous token is the command: `psm report <TAB>`, not `psm report trend <TAB>`.
+    // The previous token is the command: `psm completions <TAB>`, not `psm completions bash <TAB>`.
     let after = |name: &str| {
         format!("__fish_psm_using_subcommand {name}; and test (commandline -pco)[-1] = {name}")
     };

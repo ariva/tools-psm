@@ -12,20 +12,24 @@ use clap::{Arg, ArgAction, CommandFactory, FromArgMatches, Parser, ValueHint};
 pub use args::{CaptureArgs, DiffArgs, FilterArgs, ViewArgs};
 pub use commands::{Cmd, ExportFormat, InitCmd, ProcsCmd, ReportKind, SessionsCmd, SnapshotsCmd};
 
-/// clap's default help with three header rows: the version line (the same
-/// as `psm version`), the description, then author and repository.
+/// clap's default help opening like every other output: the version line
+/// and a blank line (`commands::HEADER`), then the description, then
+/// author and repository.
 const HELP_TEMPLATE: &str = concat!(
     "{before-help}",
-    "psm (process state monitor) ",
-    env!("CARGO_PKG_VERSION"),
-    " (built ",
-    env!("PSM_BUILD_DATE"),
-    ", commit ",
-    env!("PSM_GIT_HASH"),
-    ")\n{about}\n",
+    commands::version_line!(),
+    "\n\n{about}\n",
     "{author}  ·  ",
     env!("CARGO_PKG_REPOSITORY"),
     "\n\n{usage-heading} {usage}\n\n{all-args}{after-help}"
+);
+
+/// Every command's help: the same opening, so any `--help` says which psm
+/// wrote it; author and repository stay on the top-level page only.
+const SUB_HELP_TEMPLATE: &str = concat!(
+    "{before-help}",
+    commands::version_line!(),
+    "\n\n{about-with-newline}\n{usage-heading} {usage}\n\n{all-args}{after-help}"
 );
 
 /// Named snapshots of the process table and before/after comparison of
@@ -160,7 +164,10 @@ pub fn command() -> clap::Command {
                 .filter(|h| sc.get_arguments().all(|a| a.get_id() != h.get_id()))
                 .cloned()
                 .collect();
-            *sc = std::mem::take(sc).args(fresh).arg(help);
+            *sc = std::mem::take(sc)
+                .args(fresh)
+                .arg(help)
+                .help_template(SUB_HELP_TEMPLATE);
             add(sc, hidden);
         }
     }

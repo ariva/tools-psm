@@ -16,7 +16,7 @@ word given must match), and `psm faq 5.3` picks one row by number.
 | 1.2 | Which application uses the most memory, helpers included? | `psm procs --group app` | [grouping](USAGE.md#grouping) |
 | 1.3 | What changed since I started? | `psm diff` (baseline -> now; `psm new` takes the baseline) | [a typical session](USAGE.md#a-typical-session) |
 | 1.4 | What changed since my last snapshot? | `psm diff prev` | [comparing](USAGE.md#comparing) |
-| 1.5 | Who moved memory the most? | `psm diff --memory` | [memory impact](USAGE.md#memory-impact) |
+| 1.5 | Who moved memory the most? | `psm report memory` | [memory impact](USAGE.md#memory-impact) |
 | 1.6 | Memory went down but no process grew. Where did it go? | `psm report meminfo` | [reports](USAGE.md#reports) |
 | 1.7 | Did the new version use more memory? | `psm sessions compare old new --name X` | [example](USAGE.md#did-the-new-version-use-more-memory) |
 | 1.8 | How do I keep this state for later? | `psm snap after-update` | [capturing](USAGE.md#capturing) |
@@ -50,8 +50,8 @@ not a rate.
 | 3.4 | How do I find a process by any word I know about it? | `psm procs tsserver` (pid, name, path or command line) | [list](USAGE.md#psm-procs) |
 | 3.5 | How do I look at one or two known pids? | `psm procs --pid 4041081,4041135` | [filters](USAGE.md#filters-and-global-options) |
 | 3.6 | Which of its processes is busy right now? | `psm procs --name X --sort cpu --top 3` | [example](USAGE.md#which-of-its-processes-is-busy-right-now) |
-| 3.7 | How did one application change? | `psm diff --name X --memory` | [example](USAGE.md#how-did-one-application-change) |
-| 3.8 | Which part of an application grew? | `psm diff --name X --group parent --memory` | [example](USAGE.md#which-part-of-it-grew) |
+| 3.7 | How did one application change? | `psm report memory --name X` | [example](USAGE.md#how-did-one-application-change) |
+| 3.8 | Which part of an application grew? | `psm report memory --name X --group parent` | [example](USAGE.md#which-part-of-it-grew) |
 | 3.9 | Is it still growing? | `psm report trend` (`--name X` for one program) | [example](USAGE.md#is-it-still-growing) |
 | 3.10 | What did it look like earlier in the session? | `psm pid 4041081 baseline` (any snapshot reference) | [pid](USAGE.md#psm-pid-pid-ref) |
 | 3.11 | It has exited; what was it? | `psm pid 4041081 latest` (or the number of a snapshot that has it) | [pid](USAGE.md#psm-pid-pid-ref) |
@@ -60,11 +60,11 @@ not a rate.
 
 | # | Question | Command | More |
 |---|---|---|---|
-| 4.1 | Which processes appeared? | `psm diff --new` | [comparing](USAGE.md#comparing) |
-| 4.2 | Which processes disappeared? | `psm diff --gone` | [comparing](USAGE.md#comparing) |
-| 4.3 | Which processes restarted? | `psm diff --restarted` | [comparing](USAGE.md#comparing) |
+| 4.1 | Which processes appeared? | `psm report new` | [comparing](USAGE.md#comparing) |
+| 4.2 | Which processes disappeared? | `psm report gone` | [comparing](USAGE.md#comparing) |
+| 4.3 | Which processes restarted? | `psm report restarted` | [comparing](USAGE.md#comparing) |
 | 4.4 | Which programs grew, and by what percentage? | `psm report growth` | [reports](USAGE.md#reports) |
-| 4.5 | Is it a real leak or just cache? | `psm diff --memory --metric anon` | [memory impact](USAGE.md#memory-impact) |
+| 4.5 | Is it a real leak or just cache? | `psm report memory --metric anon` | [memory impact](USAGE.md#memory-impact) |
 | 4.6 | Which program burned the most CPU since my last snapshot, and what is busy now? | `psm report cpu prev` | [CPU](USAGE.md#cpu) |
 | 4.7 | How do I compare two specific snapshots? | `psm diff 0 2` | [comparing](USAGE.md#comparing) |
 | 4.8 | What was in a snapshot I took earlier? | `psm list`, then `psm procs show <n>` | [sessions and housekeeping](USAGE.md#sessions-and-housekeeping) |

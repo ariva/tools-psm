@@ -64,6 +64,8 @@ impl Default for Display {
 pub struct Diff {
     pub metric: String,
     pub min_memory_delta: String,
+    /// Rows per table of a full `psm diff`; 0 = every row.
+    pub top: usize,
 }
 
 impl Default for Diff {
@@ -71,6 +73,7 @@ impl Default for Diff {
         Diff {
             metric: "total".into(),
             min_memory_delta: "1M".into(),
+            top: 5,
         }
     }
 }
@@ -139,12 +142,13 @@ units = "auto"     # auto, B, KiB, MiB, GiB
 kernel = false     # show kernel threads
 interval = "500ms" # CPU sampling window of `list`, `info` and every snapshot (0: no %CPU stored)
 json_options = "full"  # what --json records about the run: full, safe (no descriptions, no paths), none
-# top = 30         # limit every table to this many rows
+# top = 30         # limit every table to this many rows (0: no limit)
 # group = "name"   # name, app, exe, cmdline, user, cgroup, parent
 
 [diff]
 metric = "total"         # total, anon, pss
 min_memory_delta = "1M"  # hide smaller memory changes
+top = 5                  # rows per table of `psm diff` (0: no limit; reports follow display.top)
 
 [track]
 every = "1s"       # sample period of `psm track`

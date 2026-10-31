@@ -16,7 +16,8 @@ fn before_after_workflow() {
         "{snap}"
     );
 
-    let d = e.json("after", &["diff", "--json"]);
+    // --top 0: every row; the default is five per table.
+    let d = e.json("after", &["diff", "--top", "0", "--json"]);
     let impact: Vec<(&str, &str, i64)> = rows(&d, "memory")
         .iter()
         .map(|r| {
@@ -60,19 +61,51 @@ fn before_after_workflow() {
         ),
         "{text}"
     );
+    // The default diff: five rows per table, the cut named, no digest repeating them.
+    assert!(
+        !text.contains("  6  alpha")
+            && text.contains("(1 more row; --top 0 shows every row)")
+            && !text.contains("TOP 5 MEMORY IMPACT"),
+        "{text}"
+    );
+    assert_eq!(
+        rows(&e.json("after", &["diff", "--json"]), "memory").len(),
+        5
+    );
+    assert_eq!(
+        rows(
+            &e.json("after", &["diff", "--top", "1", "--json"]),
+            "memory"
+        )
+        .len(),
+        1
+    );
+    // A report follows display.top (every row by default); 0 is every row too.
+    assert_eq!(
+        rows(&e.json("after", &["report", "memory", "--json"]), "memory").len(),
+        6
+    );
+    assert_eq!(
+        rows(
+            &e.json("after", &["report", "memory", "--top", "0", "--json"]),
+            "memory"
+        )
+        .len(),
+        6
+    );
     // The stored sample (0 here) is what `show` reports, not the lifetime average.
     assert_eq!(
         e.json("after", &["procs", "show", "latest", "--json"])[0]["cpu_percent"],
         0.0
     );
 
-    // A full diff closes with a digest: the five largest movers, by process and by program.
+    // A full diff with longer tables closes with a digest: the five largest movers, by process and by program.
     let top = &d["top"];
     assert_eq!(rows(top, "processes").len(), 5);
     assert_eq!(rows(top, "processes")[0]["process"], "rust-analyzer");
     assert_eq!(rows(top, "groups")[1]["name"], "code");
     assert_eq!(top["system_used"]["delta"], 1_000_000 * 1024);
-    let text = e.ok("after", &["diff"]);
+    let text = e.ok("after", &["diff", "--top", "0"]);
     let last = text.lines().last().unwrap();
     assert!(
         last.starts_with("Net process change: -36 MiB    System memory used: "),

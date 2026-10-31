@@ -323,7 +323,7 @@ pub fn track(ctx: &Ctx, a: Args) -> Result<()> {
     if framed {
         out("");
         out(RULE);
-        out(format!("{}\n", crate::cli::commands::VERSION_LINE));
+        out(crate::cli::commands::HEADER);
     }
     let restricted = RESTRICTED.load(Ordering::SeqCst);
     if restricted > 0 {

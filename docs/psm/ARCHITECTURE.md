@@ -56,17 +56,17 @@ Nothing below `commands` knows about clap.
 | `model.rs` | `Proc`, `Snapshot`, `Metric`, `Filter` (every filter, precise flags and the loose word search, in one `keep`). Plain data, used by every layer. |
 | `config.rs` | Config file loading, the default-file template, default paths, `~` expansion. |
 | `cli/` | Command-line definition (clap derive). No logic. |
-| `cli/mod.rs` | `Cli`: the global options. |
+| `cli/mod.rs` | `Cli`: the global options; `command()` adds the hidden global options, the `-h`/`--help` flag and the help template with the version line to every subcommand. |
 | `cli/args.rs` | Argument groups shared by several commands: filters, view, capture, diff. |
 | `cli/values.rs` | The fixed value lists with a description per value (group keys, sort columns, metrics, info tables). |
-| `cli/completions.rs` | clap_complete's scripts plus what they get wrong: the commands' flag forms (all three shells); a positional's fixed values and a mixed command's subcommands (`report <kind>`, `procs list`) only right after the command, where bash offers them at every word and fish not at all; for zsh one position-1 spec for `procs` so `list show` stop appearing after a word, and for `track` single-colon words (options stay completable between words) plus `_normal` for everything after `--`, read from the editor buffer because `_arguments -S` drops the `--`.; for `track` single-colon words (options stay completable between words) plus `_normal` for everything after `--`, read from the editor buffer because `_arguments -S` drops the `--`. Checked in real shells by `crates/psm/docker/completions/`. |
+| `cli/completions.rs` | clap_complete's scripts plus what they get wrong: the commands' flag forms (all three shells); a positional's fixed values and a mixed command's subcommands (`completions <shell>`, `procs list`) only right after the command, where bash offers them at every word and fish not at all; for zsh one position-1 spec for `procs` so `list show` stop appearing after a word, and for `track` single-colon words (options stay completable between words) plus `_normal` for everything after `--`, read from the editor buffer because `_arguments -S` drops the `--`. Checked in real shells by `crates/psm/docker/completions/`. |
 | `build.rs` | Stamps the short commit hash (`-dirty` when the tree has changes) and the build date into the binary for `psm version`; "unknown" when git or date is missing. Asks git for the repository directory, since the crate is not at the repository root. |
-| `cli/commands.rs` | `Cmd`, `SessionCmd`, `ReportKind`, `ExportFormat`, help texts and examples. |
+| `cli/commands.rs` | `Cmd`, `SessionCmd`, `ReportCmd` (one subcommand per report, each carrying `DiffArgs`, so `psm report cpu --help` is a page about that table: columns, the options that apply, examples) and the plain `ReportKind` it dispatches as, `ExportFormat`, help texts and examples. `procs`, `info` and `diff` carry a `Columns:`/`Sections:` block in the same way as `track`. |
 | `commands/` | One handler file per command group. |
 | `commands/mod.rs` | `Ctx` (flags + environment + config merged), `sampled` (the two-reading collection behind every snapshot and live view), `run()`, the dispatch, and the `--watch` loop around it. |
 | `commands/views.rs` | `procs` (`list`, the default, and `show`), `pid` (one process, with its session history), `info`. |
 | `commands/capture.rs` | `new`, `snap`, and the never-stored live snapshot behind `now`. |
-| `commands/compare.rs` | `diff`, `report`, `compare`: reference resolution, diff settings, sections, the closing digest, the `--brief` line. |
+| `commands/compare.rs` | `diff`, `report`, `compare`: reference resolution, diff settings, sections, the closing digest (skipped when the tables are already that short), the `--brief` line. A full diff defaults to `diff.top` rows per table, a report to `display.top`; `Table::truncate` treats 0 as no limit and records what it cut, which `render` prints under the table. |
 | `commands/sessions.rs` | `status`, `sessions list/activate/deactivate/export/import/delete`, `snapshots list/delete`, `export`, `import`. |
 | `commands/maintenance.rs` | `purge`, `backup`, `reset`. |
 | `commands/setup.rs` | `init`, `config`, where completion scripts go. |
@@ -201,10 +201,19 @@ stay inside `store`; `Snapshot::id` is the number. The live state
   completion never offers `--watch` elsewhere. `watch_of` reads it off
   the command and still refuses a stored snapshot on both sides.
   Ctrl-C ends it the ordinary way; nothing needs cleaning up.
-- **The version line comes first.** `commands::run` prints it before
-  any command a person reads, only when stdout is a terminal and the
-  command is not data (`--json`, `export`, `completions`, `help`,
-  `version`).
+- **One table is a report; `diff` is the whole comparison.** `report
+  <kind>` and the old `diff --memory/--cpu/--new/--gone/--restarted`
+  run the same `compare` with one `Section`; the flags are hidden
+  (`hide = true`, still parsed) so scripts keep working while help,
+  docs and the FAQ show one spelling. Dropping the flags is a
+  major-version change.
+- **The version line comes first, then a blank line.** One source:
+  `commands::version_line!()` builds `VERSION_LINE` (`psm version`),
+  `HEADER` (line + blank line) and both help templates, so help pages,
+  `commands::run` and `track`'s closing frame open identically. `run`
+  prints it before any command a person reads, only when stdout is a
+  terminal and the command is not data (`--json`, `export`,
+  `completions`, `help`, `version`); help pages always carry it.
 - **Every JSON document is the envelope.** `cli::parse` records the
   command path and the options that came from the command line (from
   clap's matches: ids, raw values, the subcommand chain; no per-command

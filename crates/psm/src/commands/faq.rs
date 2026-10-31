@@ -23,7 +23,7 @@ const FAQ: &[(&str, &[(&str, &str)])] = &[
                 "psm diff   (baseline -> now; psm new takes the baseline)",
             ),
             ("What changed since my last snapshot?", "psm diff prev"),
-            ("Who moved memory the most?", "psm diff --memory"),
+            ("Who moved memory the most?", "psm report memory"),
             (
                 "Memory went down but no process grew. Where did it go?",
                 "psm report meminfo",
@@ -109,11 +109,11 @@ const FAQ: &[(&str, &[(&str, &str)])] = &[
             ),
             (
                 "How did one application change?",
-                "psm diff --name X --memory",
+                "psm report memory --name X",
             ),
             (
                 "Which part of an application grew?",
-                "psm diff --name X --group parent --memory",
+                "psm report memory --name X --group parent",
             ),
             (
                 "Is it still growing?",
@@ -132,16 +132,16 @@ const FAQ: &[(&str, &[(&str, &str)])] = &[
     (
         "Comparing",
         &[
-            ("Which processes appeared?", "psm diff --new"),
-            ("Which processes disappeared?", "psm diff --gone"),
-            ("Which processes restarted?", "psm diff --restarted"),
+            ("Which processes appeared?", "psm report new"),
+            ("Which processes disappeared?", "psm report gone"),
+            ("Which processes restarted?", "psm report restarted"),
             (
                 "Which programs grew, and by what percentage?",
                 "psm report growth",
             ),
             (
                 "Is it a real leak or just cache?",
-                "psm diff --memory --metric anon",
+                "psm report memory --metric anon",
             ),
             (
                 "Which program burned the most CPU since my last snapshot, and what is busy now?",

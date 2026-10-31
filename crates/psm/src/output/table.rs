@@ -60,6 +60,8 @@ pub struct Table {
     /// A list gets `#` (JSON `n`), the row's position, as its first column
     /// when rendered; a key/value table (`plain`) does not.
     numbered: bool,
+    /// Rows `truncate` cut; the text rendering says so under the table.
+    pub hidden: usize,
 }
 
 impl Table {
@@ -68,6 +70,7 @@ impl Table {
             cols: cols.to_vec(),
             rows: Vec::new(),
             numbered: true,
+            hidden: 0,
         }
     }
 
@@ -100,8 +103,10 @@ impl Table {
         (cols, rows)
     }
 
+    /// Keeps the first `top` rows; `None` and `Some(0)` keep every row.
     pub fn truncate(&mut self, top: Option<usize>) {
-        if let Some(n) = top {
+        if let Some(n) = top.filter(|&n| n > 0) {
+            self.hidden += self.rows.len().saturating_sub(n);
             self.rows.truncate(n);
         }
     }
@@ -143,6 +148,13 @@ impl Table {
                 }
             }
             lines.push(line.trim_end().to_string());
+        }
+        if self.hidden > 0 {
+            lines.push(format!(
+                "({} more row{}; --top 0 shows every row)",
+                self.hidden,
+                if self.hidden == 1 { "" } else { "s" }
+            ));
         }
         lines.join("\n")
     }

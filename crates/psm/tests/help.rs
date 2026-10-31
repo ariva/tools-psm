@@ -79,15 +79,15 @@ fn completions_cover_commands_options_and_values() {
         bash.contains("psm,-s)\n                cmd=\"psm__subcmd__snap\""),
         "{bash}"
     );
+    // The report kinds are subcommands: clap's own script handles them.
+    assert!(
+        bash.contains(
+            "psm__subcmd__report,cpu)\n                cmd=\"psm__subcmd__report__subcmd__cpu\""
+        ),
+        "{bash}"
+    );
     // A positional's fixed values are offered right after the command only,
     // not at every later word.
-    let report = bash.find("psm__subcmd__report)").unwrap();
-    let block = &bash[report..report + 600];
-    assert!(
-        block.contains("[[ ${prev} == report ]] && opts=\"${opts} memory processes new gone growth cpu timeline trend meminfo\""),
-        "{block}"
-    );
-    assert!(!block.contains("--watch memory processes"), "{block}");
     assert!(
         bash.contains("[[ ${prev} == completions ]] && opts=\"${opts} bash"),
         "{bash}"
@@ -149,7 +149,11 @@ fn completions_cover_commands_options_and_values() {
     assert!(fish.contains("complete -c psm") && fish.contains("-s p -d"));
     // A positional's values, which clap_complete leaves out, right after the command only.
     assert!(
-        fish.contains("-n \"__fish_psm_using_subcommand report; and test (commandline -pco)[-1] = report\" -f -a \"memory\\t'"),
+        fish.contains("-n \"__fish_psm_using_subcommand completions; and test (commandline -pco)[-1] = completions\" -f -a \"bash\\t'"),
+        "{fish}"
+    );
+    assert!(
+        fish.contains("not __fish_seen_subcommand_from memory processes new gone restarted growth cpu timeline trend meminfo\" -f -a \"cpu\""),
         "{fish}"
     );
     assert!(
@@ -227,6 +231,18 @@ fn commands_have_flag_forms() {
         "{diff}"
     );
     assert_eq!(e.ok("before", &["diff", "--help"]), diff);
+    // Every help page opens like every output: the version line, then a blank line.
+    let version = e.ok("before", &["version"]);
+    for page in [
+        &diff,
+        &e.ok("before", &["report", "cpu", "-h"]),
+        &e.ok("before", &["sessions", "export", "--help"]),
+    ] {
+        assert!(
+            page.starts_with(&format!("{}\n\n", version.trim_end())),
+            "{page}"
+        );
+    }
     // Global options are accepted after a command but listed only at the top level.
     assert!(
         help.contains("--json") && !diff.contains("--json"),
@@ -246,8 +262,68 @@ fn commands_have_flag_forms() {
             .contains("unknown command `bogus`")
     );
 
+    // Each report is a subcommand with its own page: columns, options, examples.
+    let kinds = e.ok("before", &["report", "-h"]);
+    for kind in [
+        "memory",
+        "processes",
+        "new",
+        "gone",
+        "restarted",
+        "growth",
+        "cpu",
+        "timeline",
+        "trend",
+        "meminfo",
+    ] {
+        assert!(
+            kinds.contains(&format!("\n  {kind} ")),
+            "{kind} in\n{kinds}"
+        );
+        let page = e.ok("before", &["report", kind, "--help"]);
+        assert!(
+            page.contains("Columns:\n")
+                && page.contains("--top")
+                && page.contains(&format!("psm report {kind}")),
+            "{page}"
+        );
+        assert_eq!(e.ok("before", &["help", "report", kind]), page);
+    }
+    let cpu = e.ok("before", &["report", "cpu", "--help"]);
+    assert!(
+        cpu.contains("  USED ")
+            && cpu.contains("Total used")
+            && cpu.contains("Snapshot references:"),
+        "{cpu}"
+    );
+    assert!(
+        e.ok("before", &["procs", "--help"]).contains("  %MEM "),
+        "procs columns"
+    );
+    let diff_help = e.ok("before", &["diff", "--help"]);
+    assert!(diff_help.contains("MEMORY IMPACT "), "diff sections");
+    // The section flags are hidden, not gone: scripts keep working, help shows one spelling.
+    assert!(
+        !diff_help.contains("--memory") && !diff_help.contains("--restarted"),
+        "{diff_help}"
+    );
+    assert!(
+        !e.ok("before", &["report", "cpu", "-h"])
+            .contains("--memory")
+    );
+    // (clap_complete's bash and zsh scripts still offer hidden flags; fish does not. Left alone.)
+    e.before_and_after(&[]);
+    assert_eq!(
+        e.ok("after", &["diff", "--restarted", "--top", "3"]),
+        e.ok("after", &["report", "restarted", "--top", "3"]),
+        "the hidden flag is the report"
+    );
+    assert!(
+        e.fails("before", &["report"]).contains("Usage: psm report"),
+        "a kind is required"
+    );
+
     // version is a command too, with the same flag forms as help.
-    let version = e.ok("before", &["version"]);
     assert!(
         version.starts_with("psm (process state monitor) ")
             && version.contains("(built ")
@@ -256,10 +332,11 @@ fn commands_have_flag_forms() {
     );
     assert_eq!(e.ok("before", &["-v"]), version);
     assert_eq!(e.ok("before", &["--version"]), version);
-    // Row 1 is the version line, row 2 the description, row 3 author and repository;
-    // only the top-level help has them.
+    // Row 1 is the version line, then a blank line as every output opens, then
+    // the description, then author and repository; only the top-level help has them.
     let mut rows = help.lines();
     assert_eq!(rows.next().unwrap_or_default(), version.trim_end());
+    assert_eq!(rows.next().unwrap_or_default(), "");
     let second = rows.next().unwrap_or_default();
     assert!(
         second.starts_with("Named snapshots of the process table"),
